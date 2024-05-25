@@ -1,0 +1,27 @@
+
+[env]
+   FFMPEG_URL = "https://ffmpeg.org/releases/ffmpeg-snapshot.zip"
+   FFMPEG_DIR = "ffmpeg"
+
+
+[tasks.install_ffmpeg]
+   description = "Download and install FFmpeg"
+   script = [
+       "if not exist %FFMPEG_DIR% (curl -L -o ffmpeg.zip %FFMPEG_URL% && tar -xf ffmpeg.zip && move ffmpeg-* %FFMPEG_DIR% && del ffmpeg.zip)"
+   ]
+
+
+[tasks.build]
+   description = "Build the project"
+   command = "cargo"
+   args = ["build"]
+
+
+[config]
+   skip_core_tasks = false
+
+
+[flow]
+   pre-task = "install_ffmpeg"
+
+
