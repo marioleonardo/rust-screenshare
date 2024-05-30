@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 // #![forbid(unsafe_code)]
-
+pub mod screen{
 extern crate image;
 extern crate winapi;
 
@@ -29,8 +29,8 @@ use std::sync::{Arc, Mutex};
 // use ffmpeg_next as ffmpeg;
 // use ffmpeg::{codec, format, software::scaling::Context as Scaler, util::frame::video::Video};
 
-const WIDTH: u32 = 1920;
-const HEIGHT: u32 = 1080;
+const WIDTH: u32 = 1200;
+const HEIGHT: u32 = 800;
 const BOX_SIZE: i16 = 64;
 
 /// Representation of the application state. In this example, a box will bounce around the screen.
@@ -41,7 +41,7 @@ struct World {
     velocity_y: i16,
 }
 
-fn capture_screenshot() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+pub fn capture_screenshot() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     use std::ptr::null_mut;
     use std::mem::zeroed;
 
@@ -282,7 +282,7 @@ fn main() -> Result<(),  Error> {
 // Function to send a screenshot over TCP
 fn send_screenshot(screenshot: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) -> io::Result<()> {
     // Create a TCP stream and connect to the server
-    let mut stream = TcpStream::connect("127.0.0.1:3000")?;
+    let mut stream = TcpStream::connect("192.168.37.45:7878")?;
 
     // Convert the image buffer to a byte array
     let frame_bytes = screenshot.clone().into_raw();
@@ -297,7 +297,7 @@ fn send_screenshot(screenshot: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) -> io::Resul
     }
 
     // Send the end message
-    stream.write_all(b"END_PHOTO")?;
+    //stream.write_all(b"END_PHOTO")?;
 
 
     Ok(())
@@ -406,3 +406,4 @@ fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
 //     send_frame(&socket, server_addr, img).expect("Failed to send frame");
 //     receive_response(&socket).expect("Failed to receive response");
 // }
+}
