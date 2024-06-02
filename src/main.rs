@@ -3,8 +3,10 @@
 
 mod screen;
 
+use std::mem::needs_drop;
+
 use image::{ImageBuffer, Rgba};
-use eframe::{egui::{self, ColorImage, Key, Ui}, wgpu::hal::Label};
+use eframe::egui::{self, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, TextBuffer};
 use screen::screen::capture_screenshot;
 
 
@@ -22,6 +24,34 @@ enum Pages{
     CASTER,
     SETTING,
 }
+
+fn setup_custom_fonts(ctx: &egui::Context) {
+    // Start with the default fonts (we will be adding to them rather than replacing them).
+    let mut fonts = egui::FontDefinitions::default();
+
+    let mut style: egui::Style = (*ctx.style()).clone();
+        style.text_styles.get_mut(&egui::TextStyle::Body).unwrap().size = 15.0; // Cambia la dimensione del font a 24
+        ctx.set_style(style);
+
+    fonts.font_data.insert(
+        "my_font".to_owned(),
+        egui::FontData::from_static(include_bytes!(
+            "../Hack-Regular.ttf"
+        )),
+    );
+
+    // Put my font first (highest priority) for proportional text:
+     
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "my_font".to_owned());
+    
+    // Tell egui to use these fonts:
+    ctx.set_fonts(fonts);
+}
+
 
 fn main() -> eframe::Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -43,11 +73,11 @@ struct MyApp {
     stream_screenshots: StreamingState,
     texture: Option<egui::TextureHandle>,
     screenshot: Option<ColorImage>,
-    start_shortcut:Vec<Key>,
-    pause_shortcut:Vec<Key>,
-    blank_shortcut:Vec<Key>,
-    stop_shortcut:Vec<Key>,
-    vec_keys:Vec<Key>,
+    temp_shortcut: Option<KeyboardShortcut>,
+    start_shortcut: Option<KeyboardShortcut>,
+    pause_shortcut:Option<KeyboardShortcut>,
+    blank_shortcut:Option<KeyboardShortcut>,
+    stop_shortcut:Option<KeyboardShortcut>,
     insert_shortcut_start:bool,
     insert_shortcut_pause:bool,
     insert_shortcut_blank:bool,
@@ -84,17 +114,22 @@ impl MyApp{
         ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels)
     }
 
+    fn get_mod_simbol(&self,modifier:Modifiers)->String{
+        let modnames = ModifierNames::NAMES;
+        let modnamesformat = modnames.format(&modifier,false);
+        modnamesformat
+    }
+
 
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
-        let mut style: egui::Style = (*ctx.style()).clone();
-        style.text_styles.get_mut(&egui::TextStyle::Body).unwrap().size = 15.0; // Cambia la dimensione del font a 24
-        ctx.set_style(style);
+        setup_custom_fonts(&ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            
             let button_width = ui.available_width()/5.0;
             let button_height = ui.available_height()/8.0;
             if let Some(screenshot) = &self.screenshot{
@@ -161,7 +196,8 @@ impl eframe::App for MyApp {
                         
         
                     });
-        
+
+                    //visualize screen
                     if let Some(texture) = self.texture.as_ref() {
                         ui.image((texture.id(), ui.available_size()));
                     }  else {
@@ -169,7 +205,8 @@ impl eframe::App for MyApp {
                             ui.spinner();
                         });
                     }
-        
+                    
+                    //visualize options
                     match self.stream_screenshots{
                         //take new screenshot
                         StreamingState::START => self.screenshot= Some(self.screenshot()),
@@ -180,139 +217,197 @@ impl eframe::App for MyApp {
                         //remove screen
                         StreamingState::STOP => self.screenshot=None,
                     }
+
                     
-        
+                    ui.input(|i|{
+                        for event in &i.raw.events {
+                            if let egui::Event::Key { key, pressed,modifiers, .. } = event{
+                                if *pressed{   
+                                    self.temp_shortcut=Some(egui::KeyboardShortcut::new(modifiers.clone(), key.clone()));
+                                }
+                            
+                            }
+                            
+                        }
+                        //check inserted shorcut
+                        if let Some(sct) = self.temp_shortcut{
+                            if let Some(sc) = self.start_shortcut{
+                                if sct == sc {
+                                    self.stream_screenshots = StreamingState::START;
+                                    self.temp_shortcut=None;
+                                }
+                            }
+                            if let Some(sc) = self.pause_shortcut{
+                                if sct == sc {
+                                    self.stream_screenshots = StreamingState::PAUSE;
+                                    self.temp_shortcut=None;
+                                }
+                            }
+                            if let Some(sc) = self.blank_shortcut{
+                                if sct == sc {
+                                    self.stream_screenshots = StreamingState::BLANK;
+                                    self.temp_shortcut=None;
+                                }
+                            }
+                            if let Some(sc) = self.stop_shortcut{
+                                if sct == sc {
+                                    self.stream_screenshots = StreamingState::STOP;
+                                    self.temp_shortcut=None;
+                                }
+                            }
+                        }
+                        
+                        self.temp_shortcut=None;
+                             
+                    });
                     ctx.request_repaint();
+        
                 },
                 Pages::SETTING => {
                     
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui|{
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui|{
                         
-                        ui.spacing_mut().item_spacing.y = 40.0;
+                        ui.spacing_mut().item_spacing.y = button_width/4.0;
                         ui.heading("Shotcut Settings");
                         
+                        
                         ui.horizontal(|ui|{
+                            //Visualize shortcut buttons
                             let add_close_butt= egui::Button::new(if self.insert_shortcut_start{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
                             let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
-
+                            ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_pause && !self.insert_shortcut_stop{
                                 self.insert_shortcut_start=!self.insert_shortcut_start;
                                 if !self.insert_shortcut_start {
-                                    self.start_shortcut=self.vec_keys.clone();
-                                    self.vec_keys.clear();
+
+                                    self.start_shortcut=self.temp_shortcut.clone();
+                                    self.temp_shortcut=None;
                                 };
                             }
                             if ui.add(clear_butt).clicked(){
-                                self.start_shortcut.clear();
+                                self.start_shortcut=None;
                             }
                             
-                            let label:Vec<String>;
-                            
-                            if self.insert_shortcut_start{
-                                label=self.vec_keys.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }else{
-                                label=self.start_shortcut.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }
+                            //Visualize Shotcut String
                             ui.add_space(30.0);
-                            ui.label(format!("Start Streaming Shortcut : {:?}",label));
-                        
-                            
+                            ui.label(format!("Start Streaming Shortcut : "));
+                            if self.insert_shortcut_start {
+                                if let Some(sc) = self.temp_shortcut{ 
+                                    ui.label(format!("{:}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }else{
+                                if let Some(sc) = self.start_shortcut{                                    
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }
                         });
                         
-                        ui.spacing_mut().item_spacing.y = 40.0;
+                        ui.spacing_mut().item_spacing.y = button_width/4.0;
 
                         ui.horizontal(|ui|{
+                            //Visualize shortcut buttons
                             let add_close_butt= egui::Button::new(if self.insert_shortcut_pause{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
                             let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            
-                            if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_start && !self.insert_shortcut_stop {
+                            ui.add_space(30.0);
+                            if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_start && !self.insert_shortcut_stop{
                                 self.insert_shortcut_pause=!self.insert_shortcut_pause;
                                 if !self.insert_shortcut_pause {
-                                    self.pause_shortcut=self.vec_keys.clone();
-                                    self.vec_keys.clear();
+
+                                    self.pause_shortcut=self.temp_shortcut.clone();
+                                    self.temp_shortcut=None;
                                 };
                             }
                             if ui.add(clear_butt).clicked(){
-                                self.pause_shortcut.clear();
+                                self.pause_shortcut=None;
                             }
                             
-                            let label:Vec<String>;
-                            
-                            if self.insert_shortcut_pause{
-                                label=self.vec_keys.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }else{
-                                label=self.pause_shortcut.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }
+                            //Visualize Shotcut String
                             ui.add_space(30.0);
-                            ui.label(format!("Pause Streaming Shortcut : {:?}",label));
-                       
+                            ui.label(format!("Pause Streaming Shortcut : "));
+                            if self.insert_shortcut_pause {
+                                if let Some(sc) = self.temp_shortcut{ 
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }else{
+                                if let Some(sc) = self.pause_shortcut{ 
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }
                         });
 
-                        ui.spacing_mut().item_spacing.y = 40.0;
+                        ui.spacing_mut().item_spacing.y = button_width/4.0;
                         
                         ui.horizontal(|ui|{
+                            //Visualize shortcut buttons
                             let add_close_butt= egui::Button::new(if self.insert_shortcut_blank{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
                             let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            
-                            if ui.add(add_close_butt).clicked() && !self.insert_shortcut_pause && !self.insert_shortcut_start && !self.insert_shortcut_stop{
+                            ui.add_space(30.0);
+                            if ui.add(add_close_butt).clicked() && !self.insert_shortcut_start && !self.insert_shortcut_pause && !self.insert_shortcut_stop{
                                 self.insert_shortcut_blank=!self.insert_shortcut_blank;
                                 if !self.insert_shortcut_blank {
-                                    self.blank_shortcut=self.vec_keys.clone();
-                                    self.vec_keys.clear();
+
+                                    self.blank_shortcut=self.temp_shortcut.clone();
+                                    self.temp_shortcut=None;
                                 };
                             }
                             if ui.add(clear_butt).clicked(){
-                                self.blank_shortcut.clear();
+                                self.blank_shortcut=None;
                             }
                             
-                            let label:Vec<String>;
-                            
-                            if self.insert_shortcut_blank{
-                                label=self.vec_keys.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }else{
-                                label=self.blank_shortcut.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }
+                            //Visualize Shotcut String
                             ui.add_space(30.0);
-                            ui.label(format!("Blank Streaming Shortcut : {:?}",label));
-                       
+                            ui.label(format!("Blank Streaming Shortcut : "));
+                            if self.insert_shortcut_blank {
+                                if let Some(sc) = self.temp_shortcut{
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }else{
+                                if let Some(sc) = self.blank_shortcut{ 
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }
                         });
 
-                        ui.spacing_mut().item_spacing.y = 40.0;
+                        ui.spacing_mut().item_spacing.y = button_width/4.0;
                         
                         ui.horizontal(|ui|{
+                            //Visualize shortcut buttons
                             let add_close_butt= egui::Button::new(if self.insert_shortcut_stop{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
                             let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            
+                            ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_pause && !self.insert_shortcut_start{
                                 self.insert_shortcut_stop=!self.insert_shortcut_stop;
                                 if !self.insert_shortcut_stop {
-                                    self.stop_shortcut=self.vec_keys.clone();
-                                    self.vec_keys.clear();
+
+                                    self.stop_shortcut=self.temp_shortcut.clone();
+                                    self.temp_shortcut=None;
                                 };
                             }
                             if ui.add(clear_butt).clicked(){
-                                self.stop_shortcut.clear();
+                                self.stop_shortcut=None;
                             }
                             
-                            let label:Vec<String>;
-                            
-                            if self.insert_shortcut_stop{
-                                label=self.vec_keys.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }else{
-                                label=self.stop_shortcut.iter().map(|k|{format!("{:?}",k)}).collect();
-                            }
+                            //Visualize Shotcut String
                             ui.add_space(30.0);
-                            ui.label(format!("Blank Streaming Shortcut : {:?}",label));
-                       
+                            ui.label(format!("Stop Streaming Shortcut : "));
+                            if self.insert_shortcut_stop {
+                                if let Some(sc) = self.temp_shortcut{ 
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }else{
+                                if let Some(sc) = self.stop_shortcut{ 
+                                    ui.label(format!("{}+{:?}",self.get_mod_simbol(sc.modifiers),sc.logical_key));
+                                }
+                            }
                         });
-                        ui.spacing_mut().item_spacing.y = 20.0;
+                        ui.spacing_mut().item_spacing.y = button_width/8.0;
                         
-                            
-                    });
+                    });        
+                    
 
                     ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
                         if self.insert_shortcut_start || self.insert_shortcut_pause || self.insert_shortcut_blank || self.insert_shortcut_stop{
-                            ui.label("Press the shortcut, max 3 key");
+                            ui.label("Press the shortcut");
                         }
                     });
 
@@ -325,19 +420,16 @@ impl eframe::App for MyApp {
                     
                     ui.input(|i|{
                         for event in &i.raw.events {
-                            if let egui::Event::Key { key, pressed, .. } = event{
+                            if let egui::Event::Key { key, pressed, modifiers, .. } = event{
                                 if self.insert_shortcut_start || self.insert_shortcut_pause || self.insert_shortcut_blank || self.insert_shortcut_stop{
                                     if *pressed{
-                                        if self.vec_keys.len()<3{
-                                            self.vec_keys.push(key.clone());
-                                        }
-                                        else{
-                                            self.vec_keys.remove(0);
-                                            self.vec_keys.push(key.clone());
-                                        }    
+                                        
+                                        self.temp_shortcut=Some(egui::KeyboardShortcut::new(modifiers.clone(), key.clone()));
+                                 
                                     }
                             }
                             }
+                            
                         }
                         
                     });    
