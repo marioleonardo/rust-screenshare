@@ -154,9 +154,9 @@ fn main() -> Result<(),  Error> {
                 event_loop.run(move |event, _, control_flow| {
                     if let Event::RedrawRequested(_) = event {
                         let screenshot = screenshot.lock().unwrap();
-                        // let frame = pixels.frame_mut();
-                        // frame.copy_from_slice(&screenshot);
-                        // pixels.render().expect("Failed to render pixels");
+                        let frame = pixels.frame_mut();
+                        frame.copy_from_slice(&screenshot);
+                        pixels.render().expect("Failed to render pixels");
 
                         fps_counter += 1;
                         let elapsed = last_fps_time.elapsed();
@@ -282,7 +282,7 @@ fn main() -> Result<(),  Error> {
 // Function to send a screenshot over TCP
 fn send_screenshot(screenshot: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) -> io::Result<()> {
     // Create a TCP stream and connect to the server
-    let mut stream = TcpStream::connect("127.0.0.1:3000")?;
+    let mut stream = TcpStream::connect("192.168.37.45:7878")?;
 
     // Convert the image buffer to a byte array
     let frame_bytes = screenshot.clone().into_raw();
@@ -297,7 +297,7 @@ fn send_screenshot(screenshot: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) -> io::Resul
     }
 
     // Send the end message
-    stream.write_all(b"END_PHOTO")?;
+    // stream.write_all(b"END_PHOTO")?;
 
 
     Ok(())
@@ -306,7 +306,7 @@ fn send_screenshot(screenshot: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) -> io::Resul
 // Function to receive a screenshot over TCP
 fn receive_screenshot(width: u32, height: u32) -> io::Result<ImageBuffer<Rgba<u8>, Vec<u8>>> {
     // Create a TCP listener and bind to port 3000
-    let listener = TcpListener::bind("127.0.0.1:3000")?;
+    let listener = TcpListener::bind("0.0.0.0:7878")?;
 
     // Wait for a connection
     let (mut stream, _addr) = listener.accept()?;
@@ -322,20 +322,27 @@ fn receive_screenshot(width: u32, height: u32) -> io::Result<ImageBuffer<Rgba<u8
         match stream.read(&mut chunk) {
             Ok(size) if size > 0 => {
                 if &chunk[0..size] == b"START_PHOTO" {
+                    if buffer.len() > 300*200*4-2 {
+                        break;
+                    }
                     ready = true;
                     continue; // Skip appending the start message
                 }
-                if &chunk[0..size] == b"END_PHOTO" && ready {
-                    break; // Exit the loop if end message is received after start message
-                }
+                // if &chunk[0..size] == b"END_PHOTO" && ready {
+                //     break; // Exit the loop if end message is received after start message
+                // }
                 if ready {
                     buffer.extend_from_slice(&chunk[..size]);
                 }
             }
+            
             Ok(_) => break, // Stop receiving on empty read
             Err(e) => return Err(e), // Return error
         }
     }
+
+
+
 
 
     // Create an image buffer from the received data
