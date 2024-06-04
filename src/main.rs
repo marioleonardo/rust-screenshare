@@ -78,14 +78,14 @@ fn setRecorder() -> Capturer{
     recorder
 }
 
-fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<ImageBuffer<image::Rgb<u8>, Vec<u8>>>>){
+fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>){
 
     let mut fps_counter = 0;
     let mut last_fps_time = std::time::Instant::now();
     loop {
         let mut frames:Vec<BGRAFrame> = Vec::new();
         frames.clear();
-        for i in 0..200 {
+        for i in 0..20 {
             let frame = recorder.get_next_frame().expect("Error");
 
             match frame {
@@ -128,30 +128,10 @@ fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<ImageBuffer<im
                     );
                 }
                 Frame::BGRA(frame) => {
-                    if frames.len() == 0 {
-                        frames.push(frame.clone());
-                    }
-                    if i==0{
 
-                        print!("Creating video from frames {} {}", frames[0].data.len(), 2000*1000*4);
-                        frames[0]=frame.clone();
-                        let base_path = "./frames/";
-                        // print!("Saving frames to {:?}", scap::capturer::Resolution::_720p.);
-                        // save_frames_as_images(frames, base_path);
+                    let mut screenshot_clone=screenshot_clone.lock().unwrap();
+                    *screenshot_clone = frame;
 
-                        //
-                        //create_video_from_images(base_path, 2000, 1000, "output_video.mp4");
-                        // extract_images_from_video(&format!("{}{}", base_path, "output_video.mp4"), "miao.png", 30) ;
-                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, frames[0].data.clone()).unwrap();
-                        // let output_path = "./out.png";
-                        // buffer.save(output_path).expect("Failed to save image");
-                        //to buffer rgb
-                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                            let pixel = buffer_image.get_pixel(x, y);
-                            image::Rgb([pixel[0], pixel[1], pixel[2]])
-                        });
-                        let mut screenshot_clone=screenshot_clone.lock().unwrap();
-                        *screenshot_clone = rgb_img;
 
 
                         fps_counter += 1;
@@ -162,9 +142,9 @@ fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<ImageBuffer<im
                             fps_counter = 0;
                             last_fps_time = std::time::Instant::now();
                         }
-                        print!("Creating video from frames {} {}", frames[0].data.len(), 2000*1000*4);
+                        println!("frame {}", 2000*1000*4);
 
-                    }
+                    // }
                     // println!(
                     //     "Recieved BGRA frame {} of width {} and height {} ",
                     //     i,
@@ -186,17 +166,40 @@ fn main() -> Result<(),  Error> {
     if args.len() > 1 {
         match args[1].as_str() {
             "caster" => {
-                let screenshot_frames: Arc<Mutex<ImageBuffer<image::Rgb<u8>, Vec<u8>>>> = Arc::new(Mutex::new((ImageBuffer::new(0, 0))));
+                let screenshot_frames: Arc<Mutex<BGRAFrame>> = Arc::new(Mutex::new(BGRAFrame{width: 0, display_time:0, height: 0, data: vec![]}));
                 let screenshot_frames_clone = screenshot_frames.clone();
+                // let screenshot_to_send = Arc::new(Mutex::new(true));
+                // let screenshot_to_send_clone = screenshot_to_send.clone();
+
                 let recorder = setRecorder();
                 std::thread::spawn(move || {
 
 
                     thread::sleep(Duration::from_secs(2));
                     loop {
-                        let screenshot_frame = screenshot_frames.lock().unwrap();
-                        if screenshot_frame.width()> 10 {
-                            let (width, height, mut encoded_frames, encode_duration) = encode(&screenshot_frame);
+                        let screenshot_framex = screenshot_frames.lock().unwrap();
+                        let screenshot_frame = screenshot_framex.clone();
+                        drop(screenshot_framex);
+                        print!("Creating video from frames {} {}", screenshot_frame.data.len(), 2000*1000*4);
+                        // let base_path = "./frames/";
+                        // print!("Saving frames to {:?}", scap::capturer::Resolution::_720p.);
+                        // save_frames_as_images(frames, base_path);
+
+                        //
+                        //create_video_from_images(base_path, 2000, 1000, "output_video.mp4");
+                        // extract_images_from_video(&format!("{}{}", base_path, "output_video.mp4"), "miao.png", 30) ;
+                        // let output_path = "./out.png";
+                        // buffer.save(output_path).expect("Failed to save image");
+                        //to buffer rgb
+                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
+                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                            let pixel = buffer_image.get_pixel(x, y);
+                            image::Rgb([pixel[0], pixel[1], pixel[2]])
+                        });
+                        // let mut screenshot_clone=screenshot_clone.lock().unwrap();
+                        // *screenshot_clone = rgb_img;
+                        if screenshot_frame.width> 10 {
+                            let (width, height, mut encoded_frames, encode_duration) = encode(&rgb_img);
                             send_screenshot(&mut encoded_frames);
                             print!("sent");
 
@@ -235,7 +238,9 @@ fn main() -> Result<(),  Error> {
 
                 let screenshot = Arc::new(Mutex::new(ImageBuffer::<Rgba<u8>, Vec<u8>>::new(WIDTH as u32, HEIGHT as u32)));
                 let to_redraw = Arc::new(Mutex::new(false));
-                let screenshot_clone = Arc::clone(&screenshot);
+                let screenshot_clone = screenshot.clone();                
+                let screenshot_clone1 = screenshot.clone();
+
                 let to_redraw_clone = Arc::clone(&to_redraw);
 
                 // Spawn a thread to receive screenshots
@@ -243,13 +248,13 @@ fn main() -> Result<(),  Error> {
 
                 let mut fps_counter = 0;
                 let mut last_fps_time = std::time::Instant::now();
-
-                event_loop.run(move |event, _, control_flow| {
+                let mut i = 0;
+                event_loop.run(move | event, _, control_flow| {
                     if let Event::RedrawRequested(_) = event {
-                        let screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>> = Arc::clone(&screenshot);
-                        get_frame(screenshot, &mut pixels);
+                        get_frame(screenshot_clone1.clone(), &mut pixels);
                         pixels.render().expect("Failed to render pixels");
-
+                        i+=1;
+                        println!("{}", i);
                         fps_counter += 1;
                         let elapsed = last_fps_time.elapsed();
                         if elapsed >= std::time::Duration::from_secs(1) {
@@ -333,13 +338,13 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, pixels: &mu
     let screenshot = screenshot.lock().unwrap();
 
     let base_path = "./frames2/";
-    let new_frame =screenshot ;
-
+    // let new_frame = *screenshot.clone() ;
+    let new_frame: ImageBuffer<Rgba<u8>, Vec<u8>> = screenshot.clone();
 
     let mut frame = pixels.frame_mut();
-    let frame2 =  new_frame;
 
-    frame.copy_from_slice(&frame2);
+    frame.copy_from_slice(&new_frame);
+
 
 
 }
@@ -357,15 +362,19 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
             //     println!("Failed to create screenshot file");
             // }
             // extract_images_from_video(&format!("{}{}", base_path, "output_video.mp4"), "miao.png", 30) ;
-            let (decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
 
+
+            let (decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
+            // out_img.save("./mo.png").expect("Failed to save image");
             // for i in 1..11 {
                 // let file_path = format!("miao.png/frame-{:04}.png", i);
                 // let new_frame = png_to_bgra_frame(file_path).unwrap();
+            print!("maio");
             let mut screenshot = screenshot_clone.lock().unwrap();
             *screenshot = out_img;
             let mut to_redraw = to_redraw_clone.lock().unwrap();
             *to_redraw = true;
+            
             // }
             // println!("Received videos of size: {}", new_screenshot.len());
 
