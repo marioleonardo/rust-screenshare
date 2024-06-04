@@ -303,6 +303,9 @@ fn decode(encoded_frames: Vec<u8>, width: u32, height: u32) -> (std::time::Durat
     let decoded_frame = decoder.decode(&encoded_frames).expect("Failed to decode frame");
     let decode_duration = start_decode.elapsed();
     let mut rgba_buffer = vec![0u8; (width * height * 4) as usize];
+    if(decoded_frame.is_none()){
+        return (decode_duration, ImageBuffer::<Rgba<u8>, Vec<u8>>::new(5, height));
+    }
     decoded_frame.unwrap().write_rgba8(&mut rgba_buffer);
 
 
@@ -365,7 +368,8 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
 
 
             let (decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
-            // out_img.save("./mo.png").expect("Failed to save image");
+            if(out_img.width()!=5){
+                        // out_img.save("./mo.png").expect("Failed to save image");
             // for i in 1..11 {
                 // let file_path = format!("miao.png/frame-{:04}.png", i);
                 // let new_frame = png_to_bgra_frame(file_path).unwrap();
@@ -374,6 +378,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
             *screenshot = out_img;
             let mut to_redraw = to_redraw_clone.lock().unwrap();
             *to_redraw = true;
+            }
             
             // }
             // println!("Received videos of size: {}", new_screenshot.len());
