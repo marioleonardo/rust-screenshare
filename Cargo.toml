@@ -19,3 +19,5 @@ eframe ={version= "0.27.2", features = [
     "__screenshot",
     "wgpu",
 ]}
+openh264 ="0.6.0"
+scap ="0.0.5"

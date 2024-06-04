@@ -2,12 +2,19 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 mod screen;
+use std::default;
+use std::sync::Arc;
+use std::{env, os::windows::thread};
 
+use eframe::egui::mutex::Mutex;
+use screen::screen::loop_logic;
+use screen::screen::screen_state;
 use std::mem::needs_drop;
 
 use image::{ImageBuffer, Rgba};
 use eframe::egui::{self, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, TextBuffer};
-use screen::screen::capture_screenshot;
+//use screen::screen;
+
 
 #[derive(PartialEq, Debug, Default)]
 enum CastRecEnum { 
@@ -63,16 +70,29 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 
 
 fn main() -> eframe::Result<()> {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-    let options = eframe::NativeOptions {
+
+    let args: Vec<String> = env::args().collect();
+    let state=(screen_state::default());
+    std::thread::spawn(move ||{
+        
+        loop_logic(args,state);
+
+    });
+
+    
+        env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+        let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
+
     eframe::run_native(
         "Streaming Application",
         options,
-        Box::new(|_cc| Box::<MyApp>::default()),
+        Box::new(|_cc| Box::new(MyApp::new(state))),
     )
+
+    
     
 }
 
@@ -93,12 +113,19 @@ struct MyApp {
     insert_shortcut_stop:bool,
     my_enum: CastRecEnum,
     server_address: String,
+    state: screen_state,
 }
 
 impl MyApp{
+
+    fn new(state:screen_state)->Self{
+        let mut a = Self::default();
+        a.state=state;
+        a
+    }
     
-    fn screenshot(&self)->ColorImage{
-        let img = capture_screenshot();
+    fn screenshot(&mut self)->ColorImage{
+        let img = self.state.get_frame();
         let (width, height) = img.dimensions();
         let pixels = img.into_raw();
 
@@ -138,8 +165,6 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
         setup_custom_fonts(&ctx);
-
-
 
         egui::CentralPanel::default().show(ctx, |ui| {
             
