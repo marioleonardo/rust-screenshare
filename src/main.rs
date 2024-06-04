@@ -9,6 +9,12 @@ use image::{ImageBuffer, Rgba};
 use eframe::egui::{self, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, TextBuffer};
 use screen::screen::capture_screenshot;
 
+#[derive(PartialEq, Debug, Default)]
+enum CastRecEnum { 
+    #[default]
+    Caster, 
+    Receiver 
+}
 
 #[derive(Default)]
 enum StreamingState{
@@ -21,8 +27,11 @@ enum StreamingState{
 #[derive(Default)]
 enum Pages{
     #[default]
+    HOME,
     CASTER,
     SETTING,
+    RECEIVER,
+
 }
 
 fn setup_custom_fonts(ctx: &egui::Context) {
@@ -82,6 +91,8 @@ struct MyApp {
     insert_shortcut_pause:bool,
     insert_shortcut_blank:bool,
     insert_shortcut_stop:bool,
+    my_enum: CastRecEnum,
+    server_address: String,
 }
 
 impl MyApp{
@@ -128,6 +139,8 @@ impl eframe::App for MyApp {
 
         setup_custom_fonts(&ctx);
 
+
+
         egui::CentralPanel::default().show(ctx, |ui| {
             
             let button_width = ui.available_width()/5.0;
@@ -155,6 +168,39 @@ impl eframe::App for MyApp {
             )).unwrap();
 
             match self.current_page {
+                Pages::HOME =>{
+                    ui.heading("ScreenCast Application");
+
+            ui.horizontal(|ui| {
+                ui.label("Seleziona Modalità Operativa:");
+                ui.selectable_value(&mut self.my_enum, CastRecEnum::Caster, "Caster");
+                ui.selectable_value(&mut self.my_enum, CastRecEnum::Receiver, "Receiver");
+            });
+            if self.my_enum == CastRecEnum::Receiver {
+                ui.horizontal(|ui| {
+                    ui.label("Indirizzo del Server:");
+                    self.server_address="0.0.0.0".to_string();
+                    ui.text_edit_singleline(&mut self.server_address);
+                    
+                });
+                if ui.button("Visualizza trasmissione").clicked(){
+                    self.current_page = Pages::RECEIVER;
+                };
+            }
+            if self.my_enum == CastRecEnum::Caster {
+                if ui.button("Condividi schermo").clicked(){
+                    self.current_page = Pages::CASTER;
+                };
+            }
+
+            // Change color based on selection
+            let color = match self.my_enum {
+                CastRecEnum::Caster => egui::Color32::RED,
+                CastRecEnum::Receiver => egui::Color32::GREEN,
+            };
+            ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
+
+                },
                 Pages::CASTER => {
 
                     ui.horizontal(|ui| {
@@ -190,7 +236,7 @@ impl eframe::App for MyApp {
                         }
                         let back_button =egui::ImageButton::new((back_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
                         if ui.add(back_button).clicked() {
-                            self.current_page= Pages::CASTER;
+                            self.current_page= Pages::HOME;
                         }
                         });
                         
@@ -260,7 +306,7 @@ impl eframe::App for MyApp {
                         self.temp_shortcut=None;
                              
                     });
-                    ctx.request_repaint();
+                    //ctx.request_repaint();
         
                 },
                 Pages::SETTING => {
@@ -434,8 +480,11 @@ impl eframe::App for MyApp {
                         
                     });    
                                     
-                    ctx.request_repaint();
+                    //ctx.request_repaint();
                 },
+                Pages::RECEIVER=>{
+
+                }
             }
         });
 
