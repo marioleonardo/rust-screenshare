@@ -134,15 +134,15 @@ fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>){
 
 
 
-                        fps_counter += 1;
-                        let elapsed = last_fps_time.elapsed();
-                        if elapsed >= std::time::Duration::from_secs(1) {
-                            let fps = fps_counter as f64 / elapsed.as_secs_f64();
-                            println!("FPS: {:.2}", fps);
-                            fps_counter = 0;
-                            last_fps_time = std::time::Instant::now();
-                        }
-                        println!("frame {}", 2000*1000*4);
+                    fps_counter += 1;
+                    let elapsed = last_fps_time.elapsed();
+                    if elapsed >= std::time::Duration::from_secs(1) {
+                        let fps = fps_counter as f64 / elapsed.as_secs_f64();
+                        println!("FPS: {:.2}", fps);
+                        fps_counter = 0;
+                        last_fps_time = std::time::Instant::now();
+                    }
+                    // println!("frame {}", 2000*1000*4);
 
                     // }
                     // println!(
@@ -180,7 +180,7 @@ fn main() -> Result<(),  Error> {
                         let screenshot_framex = screenshot_frames.lock().unwrap();
                         let screenshot_frame = screenshot_framex.clone();
                         drop(screenshot_framex);
-                        print!("Creating video from frames {} {}", screenshot_frame.data.len(), 2000*1000*4);
+                        // print!("Creating video from frames {} {}", screenshot_frame.data.len(), 2000*1000*4);
                         // let base_path = "./frames/";
                         // print!("Saving frames to {:?}", scap::capturer::Resolution::_720p.);
                         // save_frames_as_images(frames, base_path);
@@ -201,7 +201,7 @@ fn main() -> Result<(),  Error> {
                         if screenshot_frame.width> 10 {
                             let (width, height, mut encoded_frames, encode_duration) = encode(&rgb_img);
                             send_screenshot(&mut encoded_frames);
-                            print!("sent");
+                            // print!("sent");
 
                         }
 
@@ -254,7 +254,7 @@ fn main() -> Result<(),  Error> {
                         get_frame(screenshot_clone1.clone(), &mut pixels);
                         pixels.render().expect("Failed to render pixels");
                         i+=1;
-                        println!("{}", i);
+                        // println!("{}", i);
                         fps_counter += 1;
                         let elapsed = last_fps_time.elapsed();
                         if elapsed >= std::time::Duration::from_secs(1) {
@@ -369,7 +369,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
             // for i in 1..11 {
                 // let file_path = format!("miao.png/frame-{:04}.png", i);
                 // let new_frame = png_to_bgra_frame(file_path).unwrap();
-            print!("maio");
+            // print!("maio");
             let mut screenshot = screenshot_clone.lock().unwrap();
             *screenshot = out_img;
             let mut to_redraw = to_redraw_clone.lock().unwrap();
@@ -385,7 +385,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
 
 fn send_screenshot(screenshot: &mut  Vec<u8>) -> io::Result<()> {
     // Create a TCP stream and connect to the server
-    let mut stream = TcpStream::connect("localhost:7878")?;
+    let mut stream = TcpStream::connect("192.168.71.45:7878")?;
 
     // Convert the image buffer to a byte array
     let frame_bytes = screenshot.clone();
@@ -410,7 +410,7 @@ fn send_screenshot(screenshot: &mut  Vec<u8>) -> io::Result<()> {
 // Function to receive a screenshot over TCP
 fn receive_screenshot(width: u32, height: u32) -> io::Result<Vec<u8>> {
     // Create a TCP listener and bind to port 3000
-    let listener = TcpListener::bind("localhost:7878")?;
+    let listener = TcpListener::bind("0.0.0.0:7878")?;
 
     // Wait for a connection
     let (mut stream, _addr) = listener.accept()?;
