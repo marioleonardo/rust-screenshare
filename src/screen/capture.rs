@@ -1,7 +1,7 @@
 pub mod capture{
     use scap::{
         capturer::{Area, Capturer, Options, Point, Size},
-        frame::{BGRAFrame, Frame, FrameType, YUVFrame},
+        frame::{BGRAFrame, Frame, FrameType},
     };
     use std::sync::{Arc, Mutex};
     
@@ -102,17 +102,6 @@ pub mod capture{
                             fps_counter = 0;
                             last_fps_time = std::time::Instant::now();
                         }
-                        // println!("frame {}", 2000*1000*4);
-    
-                        // }
-                        // println!(
-                        //     "Recieved BGRA frame {} of width {} and height {} ",
-                        //     i,
-                        //     frame.width,
-                        //     frame.height
-                        // );
-                        // Save frame to a folder
-    
     
                     }
                 }

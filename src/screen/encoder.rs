@@ -1,12 +1,9 @@
 pub mod encoder{
 
-    use openh264::{decoder::Decoder, encoder::Encoder, formats::{RGBSource, RgbSliceU8, YUVBuffer, YUVSource}};
-    use scap::{
-        capturer::{Area, Capturer, Options, Point, Size},
-        frame::{BGRAFrame, Frame, FrameType, YUVFrame},
-    };
+    use openh264::{encoder::Encoder, formats::{RgbSliceU8, YUVBuffer}};
     use std::time::Instant;
-    use image::{self, DynamicImage, GenericImageView, ImageBuffer, Rgba};
+    use image::{self, ImageBuffer};
+    
     pub fn encode<'a>(rgb_img: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> (u32, u32, Vec<u8>, std::time::Duration) {
     
         let (width, height) = rgb_img.dimensions();

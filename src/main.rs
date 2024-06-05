@@ -3,10 +3,8 @@
 
 mod screen;
 use std::default;
-use std::sync::Arc;
-use std::{env, os::windows::thread};
-
-use eframe::egui::mutex::Mutex;
+use std::sync::{Arc, Mutex};
+use std::{env, thread};
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
 use std::mem::needs_drop;
@@ -70,29 +68,18 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 
 
 fn main() -> eframe::Result<()> {
-
-    let args: Vec<String> = env::args().collect();
-    let state=(screen_state::default());
-    std::thread::spawn(move ||{
-        
-        loop_logic(args,state);
-
-    });
-
     
-        env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
-        let options = eframe::NativeOptions {
-        renderer: eframe::Renderer::Wgpu,
-        ..Default::default()
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    let options = eframe::NativeOptions {
+    renderer: eframe::Renderer::Wgpu,
+    ..Default::default()
     };
 
     eframe::run_native(
         "Streaming Application",
         options,
-        Box::new(|_cc| Box::new(MyApp::new(state))),
-    )
-
-    
+        Box::new(|_cc| Box::<MyApp>::default()),
+    ) 
     
 }
 
@@ -113,19 +100,21 @@ struct MyApp {
     insert_shortcut_stop:bool,
     my_enum: CastRecEnum,
     server_address: String,
-    state: screen_state,
+    state: Arc<Mutex<screen_state>>,
 }
 
 impl MyApp{
 
-    fn new(state:screen_state)->Self{
-        let mut a = Self::default();
-        a.state=state;
-        a
+    fn new(state: Arc<Mutex<screen_state>>) -> Self {
+        Self {
+            state,
+            ..Default::default()
+        }
     }
     
     fn screenshot(&mut self)->ColorImage{
-        let img = self.state.get_frame();
+        
+        let img = self.state.lock().unwrap().get_frame();
         let (width, height) = img.dimensions();
         let pixels = img.into_raw();
 
@@ -167,10 +156,14 @@ impl eframe::App for MyApp {
         setup_custom_fonts(&ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            
+
+            //let state=screen_state::default();
+            //let state = Arc::clone(&self.state);
+
             let button_width = ui.available_width()/5.0;
             let button_height = ui.available_height()/8.0;
             if let Some(screenshot) = &self.screenshot{
+
             self.texture = Some(ui.ctx().load_texture(
                 "screenshot",
                 screenshot.clone(),
@@ -196,34 +189,42 @@ impl eframe::App for MyApp {
                 Pages::HOME =>{
                     ui.heading("ScreenCast Application");
 
-            ui.horizontal(|ui| {
-                ui.label("Seleziona Modalità Operativa:");
-                ui.selectable_value(&mut self.my_enum, CastRecEnum::Caster, "Caster");
-                ui.selectable_value(&mut self.my_enum, CastRecEnum::Receiver, "Receiver");
-            });
-            if self.my_enum == CastRecEnum::Receiver {
-                ui.horizontal(|ui| {
-                    ui.label("Indirizzo del Server:");
-                    self.server_address="0.0.0.0".to_string();
-                    ui.text_edit_singleline(&mut self.server_address);
-                    
-                });
-                if ui.button("Visualizza trasmissione").clicked(){
-                    self.current_page = Pages::RECEIVER;
-                };
-            }
-            if self.my_enum == CastRecEnum::Caster {
-                if ui.button("Condividi schermo").clicked(){
-                    self.current_page = Pages::CASTER;
-                };
-            }
+                    ui.horizontal(|ui| {
+                        ui.label("Seleziona Modalità Operativa:");
+                        ui.selectable_value(&mut self.my_enum, CastRecEnum::Caster, "Caster");
+                        ui.selectable_value(&mut self.my_enum, CastRecEnum::Receiver, "Receiver");
+                    });
+                    if self.my_enum == CastRecEnum::Receiver {
+                        ui.horizontal(|ui| {
+                            ui.label("Indirizzo del Server:");
+                            self.server_address="0.0.0.0".to_string();
+                            ui.text_edit_singleline(&mut self.server_address);
+                            
+                        });
+                        if ui.button("Visualizza trasmissione").clicked(){
+                            self.current_page = Pages::RECEIVER;
 
-            // Change color based on selection
-            let color = match self.my_enum {
-                CastRecEnum::Caster => egui::Color32::RED,
-                CastRecEnum::Receiver => egui::Color32::GREEN,
-            };
-            ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
+                            let state_clone = Arc::clone(&self.state);
+                            std::thread::spawn(move || {
+                                
+                                let _ = loop_logic("receiver".to_string(), state_clone);
+                            });
+                        };
+                    }
+                    if self.my_enum == CastRecEnum::Caster {
+                        if ui.button("Condividi schermo").clicked(){
+                            self.current_page = Pages::CASTER;
+
+                            
+                        };
+                    }
+
+                    // Change color based on selection
+                    let color = match self.my_enum {
+                        CastRecEnum::Caster => egui::Color32::RED,
+                        CastRecEnum::Receiver => egui::Color32::GREEN,
+                    };
+                    ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
 
                 },
                 Pages::CASTER => {
@@ -238,6 +239,14 @@ impl eframe::App for MyApp {
                         }).min_size(egui::vec2(button_width, button_height));
                         if ui.add(start_button).clicked() {
                             self.stream_screenshots = StreamingState::START;
+                            
+
+                            let state_clone = Arc::clone(&self.state);
+                            std::thread::spawn(move || {
+                                
+                                let _ = loop_logic("caster".to_string(), state_clone);
+                            });
+                            
                         }
                         
                         let pause_button= egui::Button::new("Pause Streaming").min_size(egui::vec2(button_width, button_height));
@@ -280,7 +289,8 @@ impl eframe::App for MyApp {
                     //visualize options
                     match self.stream_screenshots{
                         //take new screenshot
-                        StreamingState::START => self.screenshot= Some(self.screenshot()),
+                        StreamingState::START => {
+                            self.screenshot= Some(self.screenshot())}
                         //keep same screenshot
                         StreamingState::PAUSE => self.screenshot= self.screenshot.clone(),
                         //take blanked screen
@@ -508,6 +518,35 @@ impl eframe::App for MyApp {
                     //ctx.request_repaint();
                 },
                 Pages::RECEIVER=>{
+
+                    ui.horizontal(|ui|{
+                        
+                        let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
+                        if ui.add(stop_button).clicked() {
+                            self.stream_screenshots = StreamingState::STOP;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
+                            let setting_button =egui::ImageButton::new((setting_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
+                        if ui.add(setting_button).clicked() {
+                            self.current_page= Pages::SETTING;
+                        }
+                        let back_button =egui::ImageButton::new((back_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
+                        if ui.add(back_button).clicked() {
+                            self.current_page= Pages::HOME;
+                        }
+                        });
+                    });
+
+                    
+
+                    if let Some(texture) = self.texture.as_ref() {
+                        ui.image((texture.id(), ui.available_size()));
+                    }  else {
+                        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
+                            ui.spinner();
+                        });
+                    }
 
                 }
             }

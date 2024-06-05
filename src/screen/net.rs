@@ -1,7 +1,7 @@
 pub mod net{
     use std::net::{TcpListener, TcpStream};
     use std::io::{self,Read};
-    use std::{fs::{self, File}, io::Write, path::Path, process::{Command, Output}};
+    use std::io::Write;
     
     pub fn send_screenshot(screenshot: &mut  Vec<u8>,ipaddress:String) -> io::Result<()> {
         // Create a TCP stream and connect to the server
@@ -28,7 +28,7 @@ pub mod net{
     }
 
     // Function to receive a screenshot over TCP
-pub fn receive_screenshot(width: u32, height: u32, ipaddress:String) -> io::Result<Vec<u8>> {
+pub fn receive_screenshot(_width: u32, _height: u32, ipaddress:String) -> io::Result<Vec<u8>> {
     // Create a TCP listener and bind to port 3000
     let listener = TcpListener::bind(ipaddress)?;
 
