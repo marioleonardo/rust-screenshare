@@ -26,8 +26,8 @@ use super::capture::capture::{loopRecorder,setRecorder};
 use super::decoder::decoder::decode;
 use super::encoder::encoder::encode;
 
-const WIDTH: u32 = 1920;
-const HEIGHT: u32 = 1080;
+const WIDTH: u32 = 2000;
+const HEIGHT: u32 = 1000;
 const BOX_SIZE: i16 = 64;
 
 #[derive(Clone)]
@@ -37,7 +37,7 @@ pub struct screen_state{
 }
 impl Default for screen_state{
     fn default() -> Self {
-        Self { frame: Arc::new(Mutex::new(ImageBuffer::new(1920, 1080))),
+        Self { frame: Arc::new(Mutex::new(ImageBuffer::new(2000, 1000))),
             to_redraw: Arc::new(Mutex::new(bool::default())),
          }
     }
@@ -46,11 +46,13 @@ impl Default for screen_state{
 impl screen_state {
     pub fn get_frame(&mut self)->ImageBuffer<Rgba<u8>, Vec<u8>>{
         let f = self.frame.lock().unwrap();
+        
         f.clone()
     }
 
     pub fn set_frame(&mut self,frame:ImageBuffer<Rgba<u8>, Vec<u8>>){
         let mut f=self.frame.lock().unwrap();
+        
         let mut a = self.to_redraw.lock().unwrap();
         *a=true;
         *f=frame;
@@ -75,8 +77,8 @@ pub fn loop_logic(args:String,mut state:Arc<Mutex<screen_state>>) -> Result<(), 
                         let screenshot_frame = screenshot_framex.clone();
                         drop(screenshot_framex);
                         
-                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(1920, 1080, screenshot_frame.data.clone()).unwrap();
-                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(1920, 1080, |x, y| {
+                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
+                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
                             let pixel = buffer_image.get_pixel(x, y);
                             image::Rgb([pixel[0], pixel[1], pixel[2]])
                         });
@@ -93,31 +95,34 @@ pub fn loop_logic(args:String,mut state:Arc<Mutex<screen_state>>) -> Result<(), 
             }
             "receiver" => {
                 println!("Receiver mode");
-                env_logger::init();
+                //env_logger::init();
 
                 let screenshot = Arc::new(Mutex::new(ImageBuffer::<Rgba<u8>, Vec<u8>>::new(WIDTH as u32, HEIGHT as u32)));
                 let to_redraw = Arc::new(Mutex::new(false));
                 let screenshot_clone = screenshot.clone();                
-                //let screenshot_clone1 = screenshot.clone();     
+                let screenshot_clone1 = screenshot.clone(); 
                 let to_redraw_clone = Arc::clone(&to_redraw);
 
                 // Spawn a thread to receive screenshots
-                let st = state.lock().unwrap().clone();
-                spawn_screenshot_thread(screenshot_clone, to_redraw_clone,st);
                 
-                /* 
+                spawn_screenshot_thread(screenshot_clone, to_redraw_clone);
+                
                 loop{
-
+                    
                     let mut to_redraw = to_redraw.lock().unwrap();
                     if *to_redraw {
+                        let mut st = state.lock().unwrap();
                         
+                        //println!("sto comunicando");
                         let frame = get_frame(screenshot_clone1.clone());
-                        state.set_frame(frame);
+                        
+                        st.set_frame(frame);
 
                         *to_redraw = false;
+                        
                     }
-
-                }*/   
+                    
+                }
             }
             _ => {
                 println!("Invalid mode");
@@ -136,26 +141,25 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>) -> ImageBuf
     let screenshot = screenshot.lock().unwrap();
     
     let new_frame: ImageBuffer<Rgba<u8>, Vec<u8>> = screenshot.clone();
-
+    
     return new_frame;
 
 
 }
 
-fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,mut state:screen_state) {
+fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>) {
     thread::spawn(move || {
         loop {
             let new_screenshot = receive_screenshot(WIDTH, HEIGHT, "localhost:7878".to_string()).unwrap();
 
-            let (_decode_duration, out_img) =decode(new_screenshot, 1920, 1080);
+            let (_decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
             if out_img.width()!=5 {
             
             let mut screenshot = screenshot_clone.lock().unwrap();
             *screenshot = out_img;
             let mut to_redraw = to_redraw_clone.lock().unwrap();
             *to_redraw = true;
-
-            state.set_frame(screenshot.clone());
+            
             }            
         }
     });

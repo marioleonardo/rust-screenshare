@@ -113,8 +113,10 @@ impl MyApp{
     }
     
     fn screenshot(&mut self)->ColorImage{
+        let mut st = self.state.lock().unwrap().clone();
         
-        let img = self.state.lock().unwrap().get_frame();
+        let img = st.get_frame();
+
         let (width, height) = img.dimensions();
         let pixels = img.into_raw();
 
@@ -157,8 +159,6 @@ impl eframe::App for MyApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
-            //let state=screen_state::default();
-            //let state = Arc::clone(&self.state);
 
             let button_width = ui.available_width()/5.0;
             let button_height = ui.available_height()/8.0;
@@ -203,10 +203,10 @@ impl eframe::App for MyApp {
                         });
                         if ui.button("Visualizza trasmissione").clicked(){
                             self.current_page = Pages::RECEIVER;
-
-                            let state_clone = Arc::clone(&self.state);
+                            self.stream_screenshots = StreamingState::START;
+                            let state_clone = self.state.clone();
                             std::thread::spawn(move || {
-                                
+                                println!("loop logic");
                                 let _ = loop_logic("receiver".to_string(), state_clone);
                             });
                         };
@@ -240,11 +240,11 @@ impl eframe::App for MyApp {
                         if ui.add(start_button).clicked() {
                             self.stream_screenshots = StreamingState::START;
                             
-
-                            let state_clone = Arc::clone(&self.state);
+                            let state_clone = self.state.clone();
                             std::thread::spawn(move || {
-                                
+                                println!("loop logic");
                                 let _ = loop_logic("caster".to_string(), state_clone);
+
                             });
                             
                         }
@@ -290,7 +290,8 @@ impl eframe::App for MyApp {
                     match self.stream_screenshots{
                         //take new screenshot
                         StreamingState::START => {
-                            self.screenshot= Some(self.screenshot())}
+                            //self.screenshot= Some(self.screenshot())
+                        }
                         //keep same screenshot
                         StreamingState::PAUSE => self.screenshot= self.screenshot.clone(),
                         //take blanked screen
@@ -548,6 +549,13 @@ impl eframe::App for MyApp {
                         });
                     }
 
+                    match self.stream_screenshots{
+                        //take new screenshot
+                        StreamingState::START => {self.screenshot= Some(self.screenshot())}
+                        //keep same screenshot
+                        _ => {}
+                    }
+                    ctx.request_repaint();
                 }
             }
         });
