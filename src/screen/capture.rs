@@ -4,6 +4,8 @@ pub mod capture{
         frame::{BGRAFrame, Frame, FrameType},
     };
     use std::sync::{Arc, Mutex};
+
+    use crate::{enums::StreamingState, screen::screen::screen_state};
     
     pub fn setRecorder() -> Capturer{
 
@@ -12,7 +14,7 @@ pub mod capture{
     
         // #4 Create Options
         let options = Options {
-            fps: 2,
+            fps: 10,
             targets,
             show_cursor: true,
             show_highlight: true,
@@ -38,13 +40,14 @@ pub mod capture{
         recorder
     }
     
-    pub fn loopRecorder( recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>){
+    pub fn loopRecorder( mut recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>, state: Arc<screen_state>){
     
         let mut fps_counter = 0;
         let mut last_fps_time = std::time::Instant::now();
         loop {
             let mut frames:Vec<BGRAFrame> = Vec::new();
             frames.clear();
+            
             for i in 0..20 {
                 let frame = recorder.get_next_frame().expect("Error");
     
@@ -89,24 +92,36 @@ pub mod capture{
                     }
                     Frame::BGRA(frame) => {
     
-                        let mut screenshot_clone=screenshot_clone.lock().unwrap();
-                        *screenshot_clone = frame;
-    
-    
-    
-                        fps_counter += 1;
-                        let elapsed = last_fps_time.elapsed();
-                        if elapsed >= std::time::Duration::from_secs(1) {
-                            let fps = fps_counter as f64 / elapsed.as_secs_f64();
-                            println!("FPS: {:.2}", fps);
-                            fps_counter = 0;
-                            last_fps_time = std::time::Instant::now();
+                        match state.get_sc_state(){
+                            StreamingState::START => {
+                                let mut screenshot_clone=screenshot_clone.lock().unwrap();
+                                *screenshot_clone = frame;
+
+                                fps_counter += 1;
+                                let elapsed = last_fps_time.elapsed();
+                                if elapsed >= std::time::Duration::from_secs(1) {
+                                let fps = fps_counter as f64 / elapsed.as_secs_f64();
+                                println!("FPS: {:.2}", fps);
+                                fps_counter = 0;
+                                last_fps_time = std::time::Instant::now();
+                                }
+                            },
+                            StreamingState::PAUSE => {
+                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            },
+                            StreamingState::BLANK => {
+                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            },
+                            StreamingState::STOP => {}
                         }
-    
+                        
                     }
                 }
             }
-            
+            if state.get_sc_state()==StreamingState::STOP{
+                recorder.stop_capture();
+                break;
+            }
         }
     }
 }

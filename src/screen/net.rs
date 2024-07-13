@@ -62,7 +62,7 @@ pub fn receive_screenshot(_width: u32, _height: u32, ipaddress:String) -> io::Re
         }
     }
 
-    println!("Sending screenshot of size: {}", buffer.len());
+    println!("Receiving screenshot of size: {}", buffer.len());
     // Create an image buffer from the received data
     let received_image =buffer;
 
