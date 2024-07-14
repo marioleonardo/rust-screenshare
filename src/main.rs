@@ -82,7 +82,6 @@ fn main() -> eframe::Result<()> {
 #[derive(Default)]
 struct MyApp {
     current_page: Pages,
-    stream_screenshots: StreamingState,
     texture: Option<egui::TextureHandle>,
     screenshot: Option<ColorImage>,
     temp_shortcut: Option<KeyboardShortcut>,
@@ -102,7 +101,7 @@ struct MyApp {
 
 impl MyApp{
 
-    fn start_function(&mut self){
+    fn start_cast_function(&mut self){
         let my_local_ip = local_ip().unwrap();
         self.state.set_ip_rec("localhost:7878".to_string());
 
@@ -115,11 +114,31 @@ impl MyApp{
             
             let _ = loop_logic("caster".to_string(), state_clone);
 
-            });
+            }); 
         }
         else{
             self.state.set_screen_state(StreamingState::START);
             self.state.cv.notify_all();
+        }
+    }
+
+    fn start_rec_function(&mut self){
+        self.state.set_ip_send("localhost:7878".to_string());
+        let state_clone = self.state.clone();
+        
+        if !self.flag_thread{
+            self.state.set_screen_state(StreamingState::START);
+            self.flag_thread=true;
+
+            std::thread::spawn(move || {
+            println!("loop logic");
+            let _ = loop_logic("receiver".to_string(), state_clone);
+
+            });
+        }
+        else{
+            self.state.set_screen_state(StreamingState::START);
+            self.state.cv.notify_all();  
         }
     }
     
@@ -236,22 +255,7 @@ impl eframe::App for MyApp {
                                 if ui.add(main_button).clicked(){
                                     self.current_page = Pages::RECEIVER;
                                     
-                                    self.state.set_ip_send("localhost:7878".to_string());
-                                    let state_clone = self.state.clone();
-                                    
-                                    if !self.flag_thread{
-                                        self.state.set_screen_state(StreamingState::START);
-                                        self.flag_thread=true;
-                                        std::thread::spawn(move || {
-                                        println!("loop logic");
-                                        let _ = loop_logic("receiver".to_string(), state_clone);
-                                    });
-        
-                                    }
-                                    else{
-                                    self.state.cv.notify_all();
-                                    self.state.set_screen_state(StreamingState::START);
-                                }
+                                    self.start_rec_function();
                                 };
                             },
                         }
@@ -274,6 +278,8 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.screenshot=None;
+                            self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
 
@@ -285,12 +291,12 @@ impl eframe::App for MyApp {
                         let back_button =egui::ImageButton::new((back_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.screenshot=None;
+                            self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
                         });
                     });
-
-                    
 
                     if let Some(texture) = self.texture.as_ref() {
                         ui.image((texture.id(), ui.available_size()));
@@ -299,11 +305,15 @@ impl eframe::App for MyApp {
                             ui.spinner();
                         });
                     }
-                    
-                    self.screenshot= Some(self.screenshot());
 
                     if self.state.get_sc_state() == StreamingState::STOP{
+                        self.screenshot=None;
+                        self.flag_thread=false;
                         self.current_page=Pages::HOME;
+
+                    }
+                    else{
+                        self.screenshot= Some(self.screenshot());
                     }
 
                     //HANDLE SHORTCUTS
@@ -338,29 +348,32 @@ impl eframe::App for MyApp {
                     //HANDLE BUTTONS
                     ui.horizontal(|ui| {
                         
-                        let start_button= egui::Button::new(match self.stream_screenshots{
+                        let start_button= egui::Button::new(match self.state.get_sc_state(){
                             StreamingState::START => "Start Streaming",
                             StreamingState::PAUSE => "Resume Streming",
                             StreamingState::BLANK => "Resume Streaming",
                             StreamingState::STOP => "Start Streaming",
                         }).min_size(egui::vec2(button_width, button_height));
                         if ui.add(start_button).clicked() {
-                            self.start_function();
+                            self.start_cast_function();
                         }
                         
                         let pause_button= egui::Button::new("Pause Streaming").min_size(egui::vec2(button_width, button_height));
                         if ui.add(pause_button).clicked() {
                             self.state.set_screen_state(StreamingState::PAUSE);
+                            self.state.cv.notify_all();
                         }
         
                         let blank_button = egui::Button::new("Blank Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(blank_button).clicked() {
                             self.state.set_screen_state(StreamingState::BLANK);
+                            self.state.cv.notify_all();
                         }
         
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
@@ -371,6 +384,7 @@ impl eframe::App for MyApp {
                         let back_button =egui::ImageButton::new((back_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
                         });
@@ -378,18 +392,23 @@ impl eframe::App for MyApp {
         
                     });
 
-                    //visualize screen
-                    if let Some(texture) = self.texture.as_ref() {
-                        ui.image((texture.id(), ui.available_size()));
-                    }  else {
-                        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
-                            ui.spinner();
-                        });
-                    }
+                    //visualize screen state
 
-                    //HANDLE SCREEN STATE
-                    self.screenshot= Some(self.screenshot());
-                    //self.screenshot= self.screenshot.clone();
+                    ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui|{
+                        match self.state.get_sc_state(){
+                            StreamingState::START => {
+                                ui.label("Trasmitting...");
+                            },
+                            StreamingState::PAUSE => {
+                                ui.label("Streaming Pause...");
+                            },
+                            StreamingState::BLANK => {
+                                ui.label("Streaming Blank...");
+                            },
+                            StreamingState::STOP => {},
+                        };
+                    });
+                    
                      
                     //HANDLE SHORTCUTS
                     ui.input(|i|{
@@ -406,7 +425,7 @@ impl eframe::App for MyApp {
                         if let Some(sct) = self.temp_shortcut{
                             if let Some(sc) = self.start_shortcut{
                                 if sct == sc {
-                                    self.start_function();
+                                    self.start_cast_function();
                                     self.temp_shortcut=None;
                                 }
                             }

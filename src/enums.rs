@@ -1,4 +1,4 @@
-#[derive(Default,Clone,PartialEq, Eq)]
+#[derive(Default,Debug,Clone,PartialEq, Eq)]
     pub enum StreamingState{
         START,
         PAUSE,

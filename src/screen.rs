@@ -130,7 +130,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 
                 let recorder = setRecorder();
                 let state_clone = state.clone();
-                std::thread::spawn(move || {
+                let a = std::thread::spawn(move || {
                 
                 thread::sleep(Duration::from_secs(2));
                 let mut paused_img:ImageBuffer::<Rgba<u8>, Vec<u8>>= ImageBuffer::default();
@@ -169,7 +169,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             let ip = state.get_ip_receiver();
                             let _ = send_screenshot(&mut encoded_frames,ip);
-                            state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::BLANK);
             
                         },
                         StreamingState::BLANK => {
@@ -184,7 +184,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             let ip = state.get_ip_receiver();
                             let _ = send_screenshot(&mut encoded_frames,ip);
-                            state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::PAUSE);
                         },
                         StreamingState::STOP => {
 
@@ -202,7 +202,9 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                     };
                 }
                 });
-                loopRecorder(recorder,screenshot_frames_clone, state_clone);    
+                loopRecorder(recorder,screenshot_frames_clone, state_clone);  
+
+                a.join().unwrap();  
             
             }
             "receiver" => {
@@ -216,18 +218,15 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
 
                 // Spawn a thread to receive screenshots
                 let state_clone= state.clone();
-                spawn_screenshot_thread(screenshot_clone, to_redraw_clone, state_clone);
+                let a = spawn_screenshot_thread(screenshot_clone, to_redraw_clone, state_clone);
                 
                 loop{
-                    
+                    if state.get_sc_state()==StreamingState::STOP{
+                        break;
+                    }
                     let mut to_redraw = to_redraw.lock().unwrap();
                     if *to_redraw {
                         
-                        if state.get_sc_state()==StreamingState::STOP{
-                            state.set_frame(blanked_screen(2000, 1000));
-                            break;
-                        }
-                        //println!("sto comunicando");
                         let frame = get_frame(screenshot_clone1.clone());
                         
                         state.set_frame(frame);
@@ -237,6 +236,8 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                     }
                     
                 }
+                println!("exit rec");
+                a.join().unwrap();
             }
             _ => {
                 println!("Invalid mode");
@@ -261,11 +262,12 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>) -> ImageBuf
 
 }
 
-fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>) {
+fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>)->JoinHandle<()> {
     thread::spawn(move || {
         loop { 
             match state.get_sc_state(){
                 StreamingState::STOP => {
+                    state.set_frame(blanked_screen(2000, 1000));
                     break;
                 },
                 StreamingState::START =>{
@@ -273,6 +275,8 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     let new_screenshot = receive_screenshot(WIDTH, HEIGHT, ip).unwrap();
                     if new_screenshot.len()<200{
                         state.set_screen_state(StreamingState::STOP);
+                        state.set_frame(blanked_screen(2000, 1000));
+
                         break;
                     }
                     let (_decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
@@ -291,7 +295,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
             };
                     
         }
-    });
+    })
 }
 
 
