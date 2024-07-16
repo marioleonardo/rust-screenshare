@@ -10,7 +10,7 @@ pub mod capture{
     pub fn setRecorder() -> Capturer{
 
         let targets = scap::get_targets();
-        println!("🎯 Targets: {:?}", targets);
+        //println!("🎯 Targets: {:?}", targets);
     
         // #4 Create Options
         let options = Options {

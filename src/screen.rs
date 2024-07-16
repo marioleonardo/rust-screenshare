@@ -7,6 +7,7 @@ pub mod screen{
 
 use std::{fs::File, io::Write, path::Path};
 
+use image::imageops::FilterType;
 use scap::frame::BGRAFrame;
 use winapi::um::winioctl::Unknown;
 
@@ -15,7 +16,7 @@ use std::io::{self};
 use std::time::Duration;
 use std::thread::{self, JoinHandle};
 
-use image::{self, GenericImageView, ImageBuffer, Rgba};
+use image::{self, DynamicImage, GenericImageView, ImageBuffer, Rgba};
 extern crate winapi;
 use pixels::Error;
 
@@ -39,6 +40,9 @@ pub struct screen_state{
     to_redraw: Arc<Mutex<bool>>,
     ip_sender: Arc<Mutex<String>>,
     ip_receiver: Arc<Mutex<String>>,
+    x: Arc<Mutex<u32>>,
+    y: Arc<Mutex<u32>>,
+    red_factor: Arc<Mutex<u32>>,
     pub cv: std::sync::Condvar,
 }
 
@@ -51,6 +55,9 @@ impl Default for screen_state{
             stream_state: Arc::new(Mutex::new(StreamingState::default())),
             ip_sender: Arc::new(Mutex::new(String::default())),
             ip_receiver: Arc::new(Mutex::new(String::default())),
+            x: Arc::new(Mutex::new(0)),
+            y: Arc::new(Mutex::new(0)),
+            red_factor: Arc::new(Mutex::new(100)),
          }
     }
 }
@@ -102,17 +109,49 @@ impl screen_state {
 
         return ip.clone();
     }
+
+    pub fn get_x(&self)->u32{
+        let x = self.x.lock().unwrap();
+
+        return x.clone();
+    }
+    pub fn get_y(&self)->u32{
+        let y = self.y.lock().unwrap();
+
+        return y.clone();
+    }
+    pub fn get_f(&self)->u32{
+        let f = self.red_factor.lock().unwrap();
+
+        return f.clone();
+    }
+
+    pub fn set_x(&self,n:u32){
+        let mut x = self.x.lock().unwrap();
+
+        *x=n;
+    }
+    pub fn set_y(&self,n:u32){
+        let mut y = self.y.lock().unwrap();
+
+        *y=n;
+    }
+    pub fn set_f(&self,n:u32){
+        let mut f = self.red_factor.lock().unwrap();
+
+        *f=n;
+    }
 }
 
-fn blanked_screen(width:u32, height:u32)->ImageBuffer<Rgba<u8>, Vec<u8>>{
-    let pixel = Rgba([255u8,255u8,255u8,255u8]);
+fn stop_screen(width:u32, height:u32)->ImageBuffer<Rgba<u8>, Vec<u8>>{
+    let pixel = Rgba([255u8,0u8,0u8,255u8]);
     let img = ImageBuffer::from_pixel(width,height , pixel);
 
     return img 
 }
 
-fn blacked_screen(width:u32, height:u32)->ImageBuffer<Rgba<u8>, Vec<u8>>{
-    let pixel = Rgba([0u8,0u8,0u8,0u8]);
+fn blanked_screen(width:u32, height:u32)->ImageBuffer<Rgba<u8>, Vec<u8>>{
+    let pixel = Rgba([255u8,255u8,255u8,255u8]);
     let img = ImageBuffer::from_pixel(width,height , pixel);
 
     return img 
@@ -133,7 +172,8 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 let a = std::thread::spawn(move || {
                 
                 thread::sleep(Duration::from_secs(2));
-                let mut paused_img:ImageBuffer::<Rgba<u8>, Vec<u8>>= ImageBuffer::default();
+                //let mut paused_img:ImageBuffer::<Rgba<u8>, Vec<u8>>= ImageBuffer::default();
+                
                 loop {
                     let sc_state= state.get_sc_state();
             
@@ -144,9 +184,10 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             drop(screenshot_framex);
                             
                             let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
-                            paused_img=buffer_image.clone();
+                            let sub_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3);
+                            
                             let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                                let pixel = buffer_image.get_pixel(x, y);
+                                let pixel = sub_image.get_pixel(x, y);
                                 image::Rgb([pixel[0], pixel[1], pixel[2]])
                             });
                         
@@ -159,16 +200,16 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                         },
                         
                         StreamingState::PAUSE =>{
-                            let buffer_image= paused_img.clone();
-                            let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                                let pixel = buffer_image.get_pixel(x, y);
-                                image::Rgb([pixel[0], pixel[1], pixel[2]])
-                            });
+                            // let buffer_image= paused_img.clone();
+                            // let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                            //     let pixel = buffer_image.get_pixel(x, y);
+                            //     image::Rgb([pixel[0], pixel[1], pixel[2]])
+                            // });
                         
                             
-                            let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
-                            let ip = state.get_ip_receiver();
-                            let _ = send_screenshot(&mut encoded_frames,ip);
+                            // let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            // let ip = state.get_ip_receiver();
+                            // let _ = send_screenshot(&mut encoded_frames,ip);
                             state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::BLANK);
             
                         },
@@ -182,22 +223,27 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                         
                             
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
-                            let ip = state.get_ip_receiver();
-                            let _ = send_screenshot(&mut encoded_frames,ip);
+                            
+                            for _ in 0..7{
+                                let ip = state.get_ip_receiver();
+                                let _ = send_screenshot(&mut encoded_frames,ip);
+                            }
                             state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::PAUSE);
                         },
                         StreamingState::STOP => {
 
-                                let buffer_image= blacked_screen(200, 100);
-                                let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(200, 100, |x, y| {
-                                    let pixel = buffer_image.get_pixel(x, y);
-                                    image::Rgb([pixel[0], pixel[1], pixel[2]])
-                                });
-                                
-                                let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            let buffer_image= stop_screen(2000, 1000);
+                            let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                                let pixel = buffer_image.get_pixel(x, y);
+                                image::Rgb([pixel[0], pixel[1], pixel[2]])
+                            });
+                            
+                            let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            for _ in 0..7{
                                 let ip = state.get_ip_receiver();
                                 let _ = send_screenshot(&mut encoded_frames,ip);
-                                break;
+                            }
+                            break;
                         }
                     };
                 }
@@ -273,15 +319,15 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                 StreamingState::START =>{
                     let ip = state.get_ip_sender();
                     let new_screenshot = receive_screenshot(WIDTH, HEIGHT, ip).unwrap();
-                    if new_screenshot.len()<200{
-                        state.set_screen_state(StreamingState::STOP);
-                        state.set_frame(blanked_screen(2000, 1000));
-
-                        break;
-                    }
+                    
                     let (_decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
                     if out_img.width()!=5 {
-                    
+                        if out_img.pixels().all(|&f| f==Rgba([235, 15, 13, 255])){
+                            state.set_screen_state(StreamingState::STOP);
+                            state.set_frame(blanked_screen(2000, 1000));
+    
+                            break;
+                        }
                     let mut screenshot = screenshot_clone.lock().unwrap();
                     *screenshot = out_img;
                     let mut to_redraw = to_redraw_clone.lock().unwrap();

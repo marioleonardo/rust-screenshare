@@ -97,6 +97,10 @@ struct MyApp {
     server_address: String,
     state: Arc<screen_state>,
     flag_thread: bool,
+    x: String,
+    y: String,
+    h: String,
+    w: String,
 }
 
 impl MyApp{
@@ -123,7 +127,7 @@ impl MyApp{
     }
 
     fn start_rec_function(&mut self){
-        self.state.set_ip_send("localhost:7878".to_string());
+        self.state.set_ip_send(self.server_address.clone());
         let state_clone = self.state.clone();
         
         if !self.flag_thread{
@@ -246,7 +250,7 @@ impl eframe::App for MyApp {
                                 ui.horizontal(|ui| {
     
                                     ui.label("IP Server:");
-                                    self.server_address="0.0.0.0".to_string();
+                                    self.server_address="localhost:7878".to_string();
                                     
                                     ui.text_edit_singleline(&mut self.server_address);
                                     
@@ -390,6 +394,78 @@ impl eframe::App for MyApp {
                         });
                         
         
+                    });
+
+                    //Stream Customization
+                    ui.add_space(20.0);
+                    ui.horizontal(|ui|{
+                        ui.label("Customize screen trasmetted");
+                    });
+                    ui.add_space(10.0);
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min),|ui|{
+                        ui.horizontal(|ui|{
+                            ui.label("X coordinate");
+                            ui.add_space(90.0);
+                            self.x = self.state.get_x().to_string();
+                            if ui.text_edit_singleline(&mut self.x).changed(){
+                                if let Ok(n) = self.x.parse::<u32>(){
+                                    if n<2000{
+                                        self.state.set_x(n);
+                                    }
+                                    else{
+                                        self.state.set_x(1999);
+                                    }
+                                }
+                                else if self.x=="".to_string(){
+                                    self.x=0.to_string();
+                                    self.state.set_x(0);
+                                }
+                                else{
+                                    ui.label("Invalid value");
+                                }
+                            };
+                        });
+                        
+                        ui.horizontal(|ui|{
+                            ui.label("Y coordinate");
+                            ui.add_space(90.0);
+                            self.y = self.state.get_y().to_string();
+                            if ui.text_edit_singleline(&mut self.y).changed(){
+                                if let Ok(n) = self.y.parse::<u32>(){
+                                    if n<100{
+                                        self.state.set_y(n);
+                                    }
+                                    else{
+                                        self.state.set_y(999); 
+                                    }
+                                }
+                                else if self.y=="".to_string(){
+                                    self.y=0.to_string();
+                                    self.state.set_y(0);
+                                }
+                                else{
+                                    ui.label("Invalid value");
+                                }
+                            };
+                        });
+
+                        ui.horizontal(|ui|{
+                            ui.label("Screen reduction (%)");
+                            ui.add_space(20.0);
+                            self.w = self.state.get_f().to_string();
+                            if ui.text_edit_singleline(&mut self.w).changed(){
+                                if let Ok(n) = self.w.parse::<u32>(){
+                                    if n<=100 && n>0 {self.state.set_f(n);}
+                                }
+                                else if self.w=="".to_string(){
+                                    self.w=0.to_string();
+                                    self.state.set_f(100);
+                                }
+                                else{
+                                    ui.label("Invalid value");
+                                }
+                            };
+                        });
                     });
 
                     //visualize screen state
