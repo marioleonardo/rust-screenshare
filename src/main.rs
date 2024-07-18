@@ -99,8 +99,7 @@ struct MyApp {
     flag_thread: bool,
     x: String,
     y: String,
-    h: String,
-    w: String,
+    f: String,
 }
 
 impl MyApp{
@@ -250,7 +249,7 @@ impl eframe::App for MyApp {
                                 ui.horizontal(|ui| {
     
                                     ui.label("IP Server:");
-                                    self.server_address="localhost:7878".to_string();
+                                    if self.server_address==""{self.server_address="localhost:7878".to_string()};
                                     
                                     ui.text_edit_singleline(&mut self.server_address);
                                     
@@ -452,13 +451,13 @@ impl eframe::App for MyApp {
                         ui.horizontal(|ui|{
                             ui.label("Screen reduction (%)");
                             ui.add_space(20.0);
-                            self.w = self.state.get_f().to_string();
-                            if ui.text_edit_singleline(&mut self.w).changed(){
-                                if let Ok(n) = self.w.parse::<u32>(){
+                            self.f = self.state.get_f().to_string();
+                            if ui.text_edit_singleline(&mut self.f).changed(){
+                                if let Ok(n) = self.f.parse::<u32>(){
                                     if n<=100 && n>0 {self.state.set_f(n);}
                                 }
-                                else if self.w=="".to_string(){
-                                    self.w=0.to_string();
+                                else if self.f=="".to_string(){
+                                    self.f=0.to_string();
                                     self.state.set_f(100);
                                 }
                                 else{
