@@ -2801,6 +2801,7 @@ checksum = "43d84d1d7a6ac92673717f9f6d1518374ef257669c24ebc5ac25d5033828be58"
 name = "proj"
 version = "0.0.0"
 dependencies = [
+ "crossbeam-channel",
  "eframe",
  "egui",
  "env_logger",

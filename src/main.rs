@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::Write, path::Path, process::{Command, Output}};
+use std::{borrow::{Borrow, BorrowMut}, fs::{self, File}, io::Write, path::Path, process::{Command, Output}};
 
 use scap::{
     capturer::{Area, Capturer, Options, Point, Size},
@@ -8,9 +8,11 @@ use scap::{
 use std::io::{self};
 
 use std::time::Duration;
+
+use crossbeam_channel::bounded;
 use std::thread;
 
-use image::{self, DynamicImage, GenericImageView, ImageBuffer, Rgba};
+use image::{self, buffer, DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use openh264::{decoder::Decoder, encoder::Encoder, formats::{RGBSource, RgbSliceU8, YUVBuffer, YUVSource}};
 use std::time::Instant;
 
@@ -33,7 +35,7 @@ use std::sync::{Arc, Mutex};
 // use ffmpeg_next as ffmpeg;
 // use ffmpeg::{codec, format, software::scaling::Context as Scaler, util::frame::video::Video};
 
-const WIDTH: u32 = 2000;
+const WIDTH: u32 = 500;
 const HEIGHT: u32 = 1000;
 const BOX_SIZE: i16 = 64;
 
@@ -52,17 +54,17 @@ fn setRecorder() -> Capturer{
 
     // #4 Create Options
     let options = Options {
-        fps: 2,
+        fps: 10,
         targets,
         show_cursor: true,
-        show_highlight: true,
+        show_highlight: false,
         excluded_targets: None,
         output_type: FrameType::YUVFrame,
         output_resolution: scap::capturer::Resolution::_720p,
         source_rect: Some(Area {
-            origin: Point { x: 0.0, y: 0.0 },
+            origin: Point { x: 500.0, y: 0.0 },
             size: Size {
-                width: 2000.0,
+                width: 500.0,
                 height: 1000.0,
             },
         }),
@@ -176,6 +178,7 @@ fn main() -> Result<(),  Error> {
 
 
                     thread::sleep(Duration::from_secs(2));
+                    let connection = get_connection_connect("localhost:7878".to_string()).unwrap();
                     loop {
                         let screenshot_framex = screenshot_frames.lock().unwrap();
                         let screenshot_frame = screenshot_framex.clone();
@@ -191,16 +194,20 @@ fn main() -> Result<(),  Error> {
                         // let output_path = "./out.png";
                         // buffer.save(output_path).expect("Failed to save image");
                         //to buffer rgb
-                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
-                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                        //compress a  2000 x 1000 vec u8 to a 800x400 vec u8
+                        
+                        let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(WIDTH, HEIGHT, screenshot_frame.data.clone()).unwrap();
+                        // let compressed_image = image::imageops::resize(&buffer_image, WIDTH, HEIGHT, image::imageops::FilterType::Lanczos3);
+                        let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(WIDTH, HEIGHT, |x, y| {
                             let pixel = buffer_image.get_pixel(x, y);
                             image::Rgb([pixel[0], pixel[1], pixel[2]])
                         });
+
                         // let mut screenshot_clone=screenshot_clone.lock().unwrap();
                         // *screenshot_clone = rgb_img;
                         if screenshot_frame.width> 10 {
                             let (width, height, mut encoded_frames, encode_duration) = encode(&rgb_img);
-                            send_screenshot(&mut encoded_frames);
+                            send_screenshot(&mut encoded_frames, connection.borrow());
                             // print!("sent");
 
                         }
@@ -244,7 +251,8 @@ fn main() -> Result<(),  Error> {
                 let to_redraw_clone = Arc::clone(&to_redraw);
 
                 // Spawn a thread to receive screenshots
-                spawn_screenshot_thread(screenshot_clone, to_redraw_clone);
+                let mut stream = get_connection_listener("localhost:7878".to_string()).unwrap();
+                spawn_screenshot_thread(screenshot_clone, to_redraw_clone, stream);
 
                 let mut fps_counter = 0;
                 let mut last_fps_time = std::time::Instant::now();
@@ -259,7 +267,7 @@ fn main() -> Result<(),  Error> {
                         let elapsed = last_fps_time.elapsed();
                         if elapsed >= std::time::Duration::from_secs(1) {
                             let fps = fps_counter as f64 / elapsed.as_secs_f64();
-                            println!("FPS: {:.2}", fps);
+                            println!("FPS MIAO: {:.2}", fps);
                             fps_counter = 0;
                             last_fps_time = std::time::Instant::now();
                         }
@@ -299,6 +307,7 @@ fn decode(encoded_frames: Vec<u8>, width: u32, height: u32) -> (std::time::Durat
     let mut decoder = Decoder::new().expect("Failed to create decoder");
 
     let start_decode = Instant::now();
+    let start_decode2 = Instant::now();
     
     let decoded_frame = decoder.decode(&encoded_frames).expect("Failed to decode frame");
     let decode_duration = start_decode.elapsed();
@@ -307,31 +316,34 @@ fn decode(encoded_frames: Vec<u8>, width: u32, height: u32) -> (std::time::Durat
         return (decode_duration, ImageBuffer::<Rgba<u8>, Vec<u8>>::new(5, height));
     }
     decoded_frame.unwrap().write_rgba8(&mut rgba_buffer);
-
-
+    
+    
+    
     // Convert the decoded frame to an ImageBuffer
     let out_img = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height,  rgba_buffer)
-        .expect("Failed to create image buffer");
-    
+    .expect("Failed to create image buffer");
+
+    let decode_duration2 = start_decode2.elapsed();
+    // println!("decode {}",decode_duration2.as_millis());
     (decode_duration, out_img)
 }
 
 fn encode<'a>(rgb_img: &ImageBuffer<image::Rgb<u8>, Vec<u8>>) -> (u32, u32, Vec<u8>, std::time::Duration) {
-    
+    let start_encode = Instant::now();
     let (width, height) = rgb_img.dimensions();
     let yuv_buffer = YUVBuffer::from_rgb_source( RgbSliceU8::new(&rgb_img, (width as usize, height as usize)));
     // Step 1.5: Convert the RGBA image to YUV
     // print!("dimensions: {}\n", yuv_buffer.u().len()*3);
-
+    
     
     // Step 2: Encode the image into video frames
     let mut encoder = Encoder::new().unwrap();
 
-    let start_encode = Instant::now();
+    let encode_duration = start_encode.elapsed();
     let encoded_frames = encoder.encode(&yuv_buffer).expect("Failed to encode frame").to_vec();
     // print!("dimensions: {}\n",  encoded_frames.to_vec().len());
 
-    let encode_duration = start_encode.elapsed();
+    // print!("encode {}",encode_duration.as_millis());
     (width, height, encoded_frames, encode_duration)
 }
 
@@ -347,63 +359,82 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, pixels: &mu
     let mut frame = pixels.frame_mut();
 
     frame.copy_from_slice(&new_frame);
-
-
-
 }
 
-fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>) {
-    thread::spawn(move || {
+fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>, stream:TcpStream) {
+    let (sender, receiver) = crossbeam_channel::bounded(1);
+
+    let receiver_thread = thread::spawn(move || {
+        let mut fps_counter = 0;
+        let mut last_fps_time = std::time::Instant::now();
+        let mut i = 0;
+                
+        let stream1= stream.borrow();  
         loop {
-            let new_screenshot = receive_screenshot(WIDTH, HEIGHT).unwrap();
-            // let base_path = "./frames2/";
-            // let output_path: String = format!("{}output_video.mp4", base_path);
-            // if let Ok(mut screenshot_file) = fs::File::create(&output_path) {
-            //     screenshot_file.write_all(&new_screenshot).unwrap();
-
-            // } else {
-            //     println!("Failed to create screenshot file");
-            // }
-            // extract_images_from_video(&format!("{}{}", base_path, "output_video.mp4"), "miao.png", 30) ;
-
-
-            let (decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
-            if(out_img.width()!=5){
-                        // out_img.save("./mo.png").expect("Failed to save image");
-            // for i in 1..11 {
-                // let file_path = format!("miao.png/frame-{:04}.png", i);
-                // let new_frame = png_to_bgra_frame(file_path).unwrap();
-            // print!("maio");
-            let mut screenshot = screenshot_clone.lock().unwrap();
-            *screenshot = out_img;
-            let mut to_redraw = to_redraw_clone.lock().unwrap();
-            *to_redraw = true;
+            if let Ok(new_screenshot) = receive_screenshot(WIDTH, HEIGHT, stream1) {
+                // println!("Received screenshot of size: {}", new_screenshot.len());
+                sender.send(new_screenshot).unwrap();
+                fps_counter+=1;
+                // println!("{}", i);
+                let elapsed = last_fps_time.elapsed().as_secs_f64();
+                if elapsed >= std::time::Duration::from_secs(1).as_secs_f64() {
+                    let fps: f64 = fps_counter as f64 / elapsed;
+                    println!("FPS MIAO: {:.2}", fps);
+                    fps_counter = 0;
+                    last_fps_time = std::time::Instant::now();
+                }
             }
-            
-            // }
-            // println!("Received videos of size: {}", new_screenshot.len());
-
         }
     });
+
+    let decoder_thread = thread::spawn(move || {
+        loop {
+            if let Ok(new_screenshot) = receiver.recv() {
+                let (decode_duration, out_img) = decode(new_screenshot, WIDTH, HEIGHT);
+                
+                if out_img.width() != 5 {
+                    let mut screenshot = screenshot_clone.lock().unwrap();
+                    *screenshot = out_img;
+
+                    let mut to_redraw = to_redraw_clone.lock().unwrap();
+                    *to_redraw = true;
+
+                    drop(screenshot);
+                    drop(to_redraw);
+
+                    // println!("Decoded frame in {} ms", decode_duration.as_millis());
+                }
+            }
+        }
+    });
+
+    // receiver_thread.join().unwrap();
+    // decoder_thread.join().unwrap();
 }
 
+fn get_connection_connect(address:String) -> io::Result<TcpStream>{
+    let mut stream = TcpStream::connect(address);
+    stream
 
-fn send_screenshot(screenshot: &mut  Vec<u8>) -> io::Result<()> {
+}
+
+fn send_screenshot(screenshot: &mut  Vec<u8>, mut stream:&TcpStream) -> io::Result<()> {
     // Create a TCP stream and connect to the server
-    let mut stream = TcpStream::connect("192.168.71.45:7878")?;
 
     // Convert the image buffer to a byte array
     let frame_bytes = screenshot.clone();
 
     // Send the start message
     stream.write_all(b"START_PHOTO")?;
-    println!("Sending screenshot of size: {}", frame_bytes.len());
+    // println!("Sending screenshot of size: {}", frame_bytes.len());
 
     // Send the image data in chunks of size 1024 bytes
     let chunk_size = 1024;
+
     for chunk in frame_bytes.chunks(chunk_size) {
         stream.write_all(chunk)?;
     }
+    
 
     // Send the end message
     stream.write_all(b"END_PHOTO")?;
@@ -412,13 +443,19 @@ fn send_screenshot(screenshot: &mut  Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
-// Function to receive a screenshot over TCP
-fn receive_screenshot(width: u32, height: u32) -> io::Result<Vec<u8>> {
-    // Create a TCP listener and bind to port 3000
-    let listener = TcpListener::bind("0.0.0.0:7878")?;
+fn get_connection_listener(address:String) -> io::Result<TcpStream> {
+    let listener = TcpListener::bind("localhost:7878")?;
 
     // Wait for a connection
     let (mut stream, _addr) = listener.accept()?;
+
+    return Ok(stream);
+}
+
+// Function to receive a screenshot over TCP
+fn receive_screenshot(width: u32, height: u32, mut stream:&TcpStream) -> io::Result<Vec<u8>> {
+    // Create a TCP listener and bind to port 3000
+    
 
     let mut buffer = Vec::new();
     let mut ready = false;
@@ -450,7 +487,7 @@ fn receive_screenshot(width: u32, height: u32) -> io::Result<Vec<u8>> {
 
 
 
-    println!("Sending screenshot of size: {}", buffer.len());
+    // println!("Sending screenshot of size: {}", buffer.len());
     // Create an image buffer from the received data
     let received_image =buffer;
 
