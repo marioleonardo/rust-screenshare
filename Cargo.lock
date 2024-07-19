@@ -1639,6 +1639,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ffmpeg-sidecar"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bec830aba6cd3da7621c58e8f06727e3b750e8383bcd934d789f2b9c3c4ea595"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3531,6 +3540,7 @@ dependencies = [
  "eframe",
  "env_logger",
  "error-iter",
+ "ffmpeg-sidecar",
  "image 0.23.14",
  "local-ip-address",
  "log",

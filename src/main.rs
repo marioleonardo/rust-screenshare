@@ -4,6 +4,7 @@
 mod screen;
 mod enums;
 use std::default;
+use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{env, thread};
@@ -15,6 +16,7 @@ use image::{ImageBuffer, Rgba};
 use eframe::egui::{self, Button, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, TextBuffer};
 //use screen::screen;
 use crate::enums::StreamingState;
+use screen::net::net::*;
 
 #[derive(PartialEq, Debug, Default)]
 enum CastRecEnum { 
@@ -105,8 +107,15 @@ struct MyApp {
 impl MyApp{
 
     fn start_cast_function(&mut self){
+
         let my_local_ip = local_ip().unwrap();
-        self.state.set_ip_rec("localhost:7878".to_string());
+        self.state.set_ip_rec(my_local_ip.to_string()+":7878");
+
+        let server = Server::new(my_local_ip.to_string()+":7878");
+        server.bind_to_ip().unwrap();
+
+        self.state.set_server(server);
+
 
         if !self.flag_thread{
             self.state.set_screen_state(StreamingState::START);
@@ -126,6 +135,11 @@ impl MyApp{
     }
 
     fn start_rec_function(&mut self){
+        let client = Client::new(self.server_address.clone(), self.server_address.clone());
+        let stream = client.connect_to_ip().unwrap();
+
+        self.state.set_client(stream, client);
+
         self.state.set_ip_send(self.server_address.clone());
         let state_clone = self.state.clone();
         
@@ -249,15 +263,16 @@ impl eframe::App for MyApp {
                                 ui.horizontal(|ui| {
     
                                     ui.label("IP Server:");
-                                    if self.server_address==""{self.server_address="localhost:7878".to_string()};
+                                    //if self.server_address==""{self.server_address="192.168.88.107:7878".to_string()};
                                     
                                     ui.text_edit_singleline(&mut self.server_address);
+
                                     
                                 });
                                 let main_button = egui::Button::new("Visualizza straming").min_size(egui::vec2(ui.available_width(), button_height/2.0));
                                 if ui.add(main_button).clicked(){
                                     self.current_page = Pages::RECEIVER;
-                                    
+
                                     self.start_rec_function();
                                 };
                             },
@@ -465,6 +480,12 @@ impl eframe::App for MyApp {
                                 }
                             };
                         });
+                    });
+                    ui.add_space(10.0);
+                    let my_local_ip = local_ip().unwrap();
+                    ui.horizontal(|ui|{
+                        ui.label("Your Server IP: ");
+                        ui.label(my_local_ip.to_string()+":7878");
                     });
 
                     //visualize screen state
