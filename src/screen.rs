@@ -184,12 +184,14 @@ impl screen_state {
         if let Some(( stream,client)) = c.as_mut(){
             if client.is_connected(&stream) {
                 println!("prima rec");
-                let screenshot = client.receive_image_and_struct(stream)?;
-                println!("dopo rec");
-                if let State::Receiving = screenshot.state {
+                if let Ok(screenshot) = client.receive_image_and_struct(stream){
+                    println!("dopo rec");
+                    if let State::Receiving = screenshot.state {
                     println!("Received a screenshot with resolution: ");
                     return Ok(screenshot.data);
                 }
+                };
+                
             }
         }
         println!("error");

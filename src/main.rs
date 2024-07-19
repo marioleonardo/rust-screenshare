@@ -136,14 +136,12 @@ impl MyApp{
 
     fn start_rec_function(&mut self){
         let client = Client::new(self.server_address.clone(), self.server_address.clone());
-        let stream = client.connect_to_ip().unwrap();
-
-        self.state.set_client(stream, client);
-
-        self.state.set_ip_send(self.server_address.clone());
-        let state_clone = self.state.clone();
+        if let Ok(stream) = client.connect_to_ip(){
+            self.state.set_client(stream, client);
+            self.state.set_ip_send(self.server_address.clone());
+            let state_clone = self.state.clone();
         
-        if !self.flag_thread{
+            if !self.flag_thread{
             self.state.set_screen_state(StreamingState::START);
             self.flag_thread=true;
 
@@ -152,11 +150,17 @@ impl MyApp{
             let _ = loop_logic("receiver".to_string(), state_clone);
 
             });
-        }
-        else{
+            }
+            else{
             self.state.set_screen_state(StreamingState::START);
             self.state.cv.notify_all();  
+            }
         }
+        else{
+            self.current_page = Pages::HOME;
+        }
+
+        
     }
     
     fn screenshot(&mut self)->ColorImage{
