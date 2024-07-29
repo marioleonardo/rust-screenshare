@@ -241,13 +241,10 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             drop(screenshot_framex);
                             
                             let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
-                            let sub_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3);
+                            // let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
                             
-                            let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                                let pixel = sub_image.get_pixel(x, y);
-                                image::Rgb([pixel[0], pixel[1], pixel[2]])
-                            });
-                        
+                            let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, 2000, 1000);
+
                             if screenshot_frame.width> 10 {
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             let ip = state.get_ip_receiver();
@@ -363,6 +360,18 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>) -> ImageBuf
     return new_frame;
 
 
+}
+
+fn convert_rgba_to_rgb(
+    sub_image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    width: u32,
+    height: u32,
+) -> ImageBuffer<image::Rgb<u8>, Vec<u8>> {
+    let mut rgb_img = ImageBuffer::new(width, height);
+    for (x, y, pixel) in sub_image.enumerate_pixels() {
+        rgb_img.put_pixel(x, y, image::Rgb([pixel[0], pixel[1], pixel[2]]));
+    }
+    rgb_img
 }
 
 fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>)->JoinHandle<()> {
