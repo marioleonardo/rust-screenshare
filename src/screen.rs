@@ -48,7 +48,8 @@ pub struct screen_state{
     red_factor: Arc<Mutex<u32>>,
     pub cv: std::sync::Condvar,
     pub client_stream: Arc<Mutex<Option<(TcpStream,Client)>>>,
-    pub server: Arc<Mutex<Option<Server>>>
+    pub server: Arc<Mutex<Option<Server>>>,
+    pub recording: Arc<Mutex<Option<bool>>>
 
 }
 
@@ -65,7 +66,8 @@ impl Default for screen_state{
             y: Arc::new(Mutex::new(0)),
             red_factor: Arc::new(Mutex::new(100)),
             client_stream: Arc::new(Mutex::new(None)),
-            server: Arc::new(Mutex::new(None))
+            server: Arc::new(Mutex::new(None)),
+            recording: Arc::new(Mutex::new(None))
          }
     }
 }
@@ -150,6 +152,18 @@ impl screen_state {
         *f=n;
     }
 
+    pub fn set_rec(&self,flag:Option<bool>){
+        let mut f = self.recording.lock().unwrap();
+
+        *f=flag;
+    }
+
+    pub fn get_rec(&self)->Option<bool>{
+        let f = self.recording.lock().unwrap();
+
+        return f.clone();
+    }
+
     pub fn set_server(&self,server:Option<Server>){
         let mut s= self.server.lock().unwrap();
 
@@ -162,15 +176,15 @@ impl screen_state {
         *c=client;
     }
 
-    pub fn send_to_clients(&self,v:Vec<u8>)->Result<(()),Error>{
+    pub fn send_to_clients(&self,v:Vec<u8>,w:u32,h:u32,state:State)->Result<(()),Error>{
         let s = self.server.lock().unwrap();
         
         if let Some(server) =s.as_ref(){
         let screenshot_data = Screenshot {
             data: v,
-            width: 1920,  // Placeholder width
-            height: 1080, // Placeholder height
-            state: State::Receiving,
+            width: w,  // Placeholder width
+            height: h, // Placeholder height
+            state,
         };
         let res = server.send_to_all_clients(&screenshot_data);
         println!("inviato: {:?}",res)
@@ -179,19 +193,19 @@ impl screen_state {
 
     }
 
-    pub fn receive_from_server(&self)-> io::Result<Vec<u8>>{
+    pub fn receive_from_server(&self)-> io::Result<Screenshot>{
         let mut c = self.client_stream.lock().unwrap();
         
         println!("start");
         if let Some(( stream,client)) = c.as_mut(){
             if client.is_connected(&stream) {
-                println!("prima rec");
+                
                 if let Ok(screenshot) = client.receive_image_and_struct(stream){
-                    println!("dopo rec");
-                    if let State::Receiving = screenshot.state {
-                    println!("Received a screenshot with resolution: ");
-                    return Ok(screenshot.data);
-                }
+                    
+                    //if let State::Receiving = screenshot.state {
+                    
+                    return Ok(screenshot);
+                    //}
                 };
                 
             }
@@ -245,19 +259,21 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
                             
                             //TODO: instead of cropping we should send variable image size and communicate the actual size with the struct sent, and then display a variable size image 
-                            // let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
+                            let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
+                            let dim = buffer_image.dimensions();
+                            println!("{:?}",dim);
+                            let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, dim.0, dim.1);
+
                             
-                            let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, 2000, 1000);
-
-                            state.set_frame(ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                            state.set_frame(ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_fn(dim.0, dim.1, |x, y| {
                                 let pixel = rgb_img.get_pixel(x, y);
-                                image::Rgba([pixel[0], pixel[1], pixel[2], pixel[3]])
+                                image::Rgba([pixel[0], pixel[1], pixel[2], 255])
                             }));
-
+                            
                             if screenshot_frame.width> 10 {
-                            let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            let (width, height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             let ip = state.get_ip_receiver();
-                            let _ = state.send_to_clients(encoded_frames);
+                            let _ = state.send_to_clients(encoded_frames,width, height,State::Receiving);
                         
                             }
                         },
@@ -285,11 +301,11 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             });
                         
                             
-                            let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            let (width, height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             
                             for _ in 0..7{
                                 let ip = state.get_ip_receiver();
-                                let _ = state.send_to_clients(encoded_frames.clone());
+                                let _ = state.send_to_clients(encoded_frames.clone(),width, height,State::Blank);
                             }
                             state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::PAUSE);
                         },
@@ -301,11 +317,13 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                                 image::Rgb([pixel[0], pixel[1], pixel[2]])
                             });
                             
-                            let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
-                            for _ in 0..7{
+                            let (width, height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
+                            for _ in 0..20{
                                 let ip = state.get_ip_receiver();
-                                let _ = state.send_to_clients(encoded_frames.clone());
+                                let _ = state.send_to_clients(encoded_frames.clone(),width, height,State::Stop);
                             }
+                            state.set_server(None);
+
                             break;
                         }
                     };
@@ -387,12 +405,11 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
     thread::spawn(move || {
         let mut video_writer = VideoWriter::new(100, "video.h264".to_string());
         //TODO this recording flag arrive from state and is setted by the user
-        let recording = true;
         loop { 
             match state.get_sc_state(){
                 StreamingState::STOP => {
-                    if recording{
-                        video_writer.write_to_file();
+                    if let Some(recording) = state.get_rec() {
+                        if recording{ video_writer.write_to_file();}
                     }
                     state.set_frame(blanked_screen(2000, 1000));
                     break;
@@ -400,25 +417,31 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                 StreamingState::START =>{
                     let ip = state.get_ip_sender();
                     let new_screenshot = state.receive_from_server().unwrap();
-                    if(recording){
-                        video_writer.add_frame(new_screenshot.clone());
+                    println!("{:?}",new_screenshot.state);
+                    if let Some(recording) = state.get_rec() {
 
+                        if recording {
+                            video_writer.add_frame(new_screenshot.data.clone());
+                        }
+                        else{
+                            video_writer.write_to_file();
+                            state.set_rec(None);
+                        }
                     }
                     
-                    let (_decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
-                    if out_img.width()!=5 {
-                        if out_img.pixels().all(|&f| f==Rgba([235, 15, 13, 255])){
-                            state.set_screen_state(StreamingState::STOP);
-                            state.set_frame(blanked_screen(2000, 1000));
-    
-                            break;
-                        }
+                    let (_decode_duration, out_img) =decode(new_screenshot.data, new_screenshot.width, new_screenshot.height);
+                    
+                    if new_screenshot.state==State::Stop{
+                        state.set_screen_state(StreamingState::STOP);
+                        state.set_frame(blanked_screen(2000, 1000));
+                        break;
+                    }
                     let mut screenshot = screenshot_clone.lock().unwrap();
                     *screenshot = out_img;
                     let mut to_redraw = to_redraw_clone.lock().unwrap();
                     *to_redraw = true;
             
-                    }   
+                      
                     
                 },
 

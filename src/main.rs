@@ -376,6 +376,27 @@ impl eframe::App for MyApp {
                             self.current_page= Pages::HOME;
                         }
 
+                        let rec_button = egui::Button::new(match self.state.get_rec() {
+                            Some(rec) => {
+                                if rec{"Stop Record"}
+                                else{"Record"}
+                            },
+                            None => "Record",
+                        }).min_size(egui::vec2(button_width,button_height));
+                        if ui.add(rec_button).clicked() {
+                            if let Some(rec) = self.state.get_rec(){
+                                if rec{
+                                    self.state.set_rec(Some(false));
+                                }
+                                else {
+                                    self.state.set_rec(Some(true));
+                                }
+                            }
+                            else {
+                                self.state.set_rec(Some(true));
+                            }
+                        }
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
                             let setting_button =egui::ImageButton::new((setting_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
                         if ui.add(setting_button).clicked() {
@@ -466,7 +487,7 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
-                            self.state.set_server(None);
+                            //self.state.set_server(None);
                             self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
@@ -480,7 +501,7 @@ impl eframe::App for MyApp {
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.screenshot=None;
-                            self.state.set_server(None);
+                            //self.state.set_server(None);
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -499,14 +520,16 @@ impl eframe::App for MyApp {
                         ui.horizontal(|ui|{
                             ui.label("X coordinate");
                             ui.add_space(90.0);
-                            self.x = self.state.get_x().to_string();
+                            //self.x = self.state.get_x().to_string();
                             if ui.text_edit_singleline(&mut self.x).changed(){
                                 if let Ok(n) = self.x.parse::<u32>(){
-                                    if n<2000{
+                                    if n<1999 && n%2==0{
                                         self.state.set_x(n);
+                                        self.x=n.to_string();
                                     }
                                     else{
-                                        self.state.set_x(1999);
+                                        self.state.set_x(0);
+                                        self.x=0.to_string();
                                     }
                                 }
                                 else if self.x=="".to_string(){
@@ -522,15 +545,18 @@ impl eframe::App for MyApp {
                         ui.horizontal(|ui|{
                             ui.label("Y coordinate");
                             ui.add_space(90.0);
-                            self.y = self.state.get_y().to_string();
+                            //self.y = self.state.get_y().to_string();
                             if ui.text_edit_singleline(&mut self.y).changed(){
                                 if let Ok(n) = self.y.parse::<u32>(){
-                                    if n<100{
+                                    if n<999 && n%2==0{
                                         self.state.set_y(n);
+                                        self.y=n.to_string()
                                     }
                                     else{
-                                        self.state.set_y(999); 
+                                        self.state.set_y(0); 
+                                        self.y=0.to_string()
                                     }
+                                    
                                 }
                                 else if self.y=="".to_string(){
                                     self.y=0.to_string();
@@ -545,10 +571,16 @@ impl eframe::App for MyApp {
                         ui.horizontal(|ui|{
                             ui.label("Screen reduction (%)");
                             ui.add_space(20.0);
-                            self.f = self.state.get_f().to_string();
+                            //self.f = self.state.get_f().to_string();
                             if ui.text_edit_singleline(&mut self.f).changed(){
                                 if let Ok(n) = self.f.parse::<u32>(){
-                                    if n<=100 && n>0 {self.state.set_f(n);}
+                                    if n<=100 && n>1 {
+                                        self.state.set_f(n);
+                                        self.f=n.to_string();
+                                    }
+                                    else{
+                                        self.f=0.to_string()
+                                    }
                                 }
                                 else if self.f=="".to_string(){
                                     self.f=0.to_string();
