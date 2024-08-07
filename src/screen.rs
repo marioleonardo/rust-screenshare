@@ -2,6 +2,7 @@ pub(crate) mod net;
 mod encoder;
 mod decoder;
 mod capture;
+mod videowriter;
 pub mod screen{
     
 
@@ -29,6 +30,7 @@ use super::net::net::*;
 use super::capture::capture::{loopRecorder,setRecorder};
 use super::decoder::decoder::decode;
 use super::encoder::encoder::encode;
+use super::videowriter::VideoWriter;
 
 const WIDTH: u32 = 2000;
 const HEIGHT: u32 = 1000;
@@ -241,18 +243,17 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             drop(screenshot_framex);
                             
                             let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
-                            let sub_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3);
                             
-                            let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                                let pixel = sub_image.get_pixel(x, y);
-                                image::Rgb([pixel[0], pixel[1], pixel[2]])
-                            });
+                            //TODO: instead of cropping we should send variable image size and communicate the actual size with the struct sent, and then display a variable size image 
+                            // let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
+                            
+                            let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, 2000, 1000);
 
                             state.set_frame(ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
                                 let pixel = sub_image.get_pixel(x, y);
                                 image::Rgba([pixel[0], pixel[1], pixel[2], pixel[3]])
                             }));
-                        
+
                             if screenshot_frame.width> 10 {
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             let ip = state.get_ip_receiver();
@@ -370,17 +371,39 @@ fn get_frame(screenshot: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>) -> ImageBuf
 
 }
 
+fn convert_rgba_to_rgb(
+    sub_image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    width: u32,
+    height: u32,
+) -> ImageBuffer<image::Rgb<u8>, Vec<u8>> {
+    let mut rgb_img = ImageBuffer::new(width, height);
+    for (x, y, pixel) in sub_image.enumerate_pixels() {
+        rgb_img.put_pixel(x, y, image::Rgb([pixel[0], pixel[1], pixel[2]]));
+    }
+    rgb_img
+}
+
 fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>)->JoinHandle<()> {
     thread::spawn(move || {
+        let mut video_writer = VideoWriter::new(100, "video.h264".to_string());
+        //TODO this recording flag arrive from state and is setted by the user
+        let recording = true;
         loop { 
             match state.get_sc_state(){
                 StreamingState::STOP => {
+                    if recording{
+                        video_writer.write_to_file();
+                    }
                     state.set_frame(blanked_screen(2000, 1000));
                     break;
                 },
                 StreamingState::START =>{
                     let ip = state.get_ip_sender();
                     let new_screenshot = state.receive_from_server().unwrap();
+                    if(recording){
+                        video_writer.add_frame(new_screenshot.clone());
+
+                    }
                     
                     let (_decode_duration, out_img) =decode(new_screenshot, 2000, 1000);
                     if out_img.width()!=5 {
