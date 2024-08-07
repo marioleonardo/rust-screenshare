@@ -250,7 +250,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, 2000, 1000);
 
                             state.set_frame(ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                                let pixel = sub_image.get_pixel(x, y);
+                                let pixel = rgb_img.get_pixel(x, y);
                                 image::Rgba([pixel[0], pixel[1], pixel[2], pixel[3]])
                             }));
 
