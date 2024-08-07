@@ -10,10 +10,11 @@ use std::thread::JoinHandle;
 use std::{env, thread};
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
+use winapi::shared::winerror::SEC_E_ONLY_HTTPS_ALLOWED;
 use std::mem::needs_drop;
 use local_ip_address::local_ip;
 use image::{ImageBuffer, Rgba};
-use eframe::egui::{self, Button, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, TextBuffer};
+use eframe::egui::{self, Button, Color32, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, PointerButton, Pos2, TextBuffer};
 //use screen::screen;
 use crate::enums::StreamingState;
 use screen::net::net::*;
@@ -34,6 +35,15 @@ enum Pages{
     SETTING,
     RECEIVER,
 
+}
+
+#[derive(Default,PartialEq)]
+enum Drawing{
+    #[default]
+    NONE,
+    LINE,
+    CIRCLE,
+    TEXT,
 }
 
 fn setup_custom_fonts(ctx: &egui::Context) {
@@ -62,6 +72,63 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);
+}
+
+fn handle_mouse_input(ui: &egui::Ui, annotations: &mut Vec<(egui::Pos2, egui::Pos2)>, is_drawing:&mut bool) {
+
+    ui.input(|i|{
+        for event in &i.raw.events{
+            if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
+                if *pressed && *button==PointerButton::Primary{
+
+                    
+                    *is_drawing=true;
+                    annotations.push((*pos,*pos)); 
+                    
+                }
+                else if !*pressed {
+                    
+                    *is_drawing=false;
+                }
+
+            };
+            if let egui::Event::PointerMoved(pos) = event{
+                if *is_drawing==true{
+                    
+                    if let Some(last_ann) = annotations.last_mut() {
+                    
+                        last_ann.1 = *pos;
+                    }
+                    
+                    
+                }
+                
+            }
+
+        }   
+    }); 
+}
+
+fn handle_text_input(ui: &egui::Ui, annotations: &mut Vec<(egui::Pos2, String)>, is_drawing:&mut bool) {
+
+    ui.input(|i|{
+        for event in &i.raw.events{
+            if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
+                
+                if *pressed && *button==PointerButton::Primary{
+                    annotations.push((*pos,String::new()));
+                    
+                }
+
+            };
+            if let egui::Event::Text(text)= event{
+                if let Some(last_ann) = annotations.last_mut() {
+                    
+                    last_ann.1.push_str(&text);
+                }
+            }
+        }   
+    }); 
 }
 
 
@@ -102,22 +169,26 @@ struct MyApp {
     x: String,
     y: String,
     f: String,
+    line_annotations: Vec<(egui::Pos2, egui::Pos2)>,
+    circle_annotations: Vec<(egui::Pos2, egui::Pos2)>,
+    text_annotation: Vec<(egui::Pos2,String)>,
+    is_drawing :bool,
+    drawings: Drawing,
 }
 
 impl MyApp{
 
     fn start_cast_function(&mut self){
 
-        let my_local_ip = local_ip().unwrap();
-        self.state.set_ip_rec(my_local_ip.to_string()+":7878");
-
-        let server = Server::new(my_local_ip.to_string()+":7878");
-        server.bind_to_ip().unwrap();
-
-        self.state.set_server(server);
-
-
         if !self.flag_thread{
+            let my_local_ip = local_ip().unwrap();
+            self.state.set_ip_rec(my_local_ip.to_string()+":7878");
+
+            let server = Server::new(my_local_ip.to_string()+":7878");
+            let _ = server.bind_to_ip();
+
+            self.state.set_server(Some(server));
+
             self.state.set_screen_state(StreamingState::START);
             self.flag_thread=true;
 
@@ -137,7 +208,7 @@ impl MyApp{
     fn start_rec_function(&mut self){
         let client = Client::new(self.server_address.clone(), self.server_address.clone());
         if let Ok(stream) = client.connect_to_ip(){
-            self.state.set_client(stream, client);
+            self.state.set_client(Some((stream, client)));
             self.state.set_ip_send(self.server_address.clone());
             let state_clone = self.state.clone();
         
@@ -190,7 +261,6 @@ impl MyApp{
         modnamesformat
     }
 
-
 }
 
 impl eframe::App for MyApp {
@@ -200,11 +270,12 @@ impl eframe::App for MyApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
 
-
+            let mut shapes:Vec<egui::Shape> = Vec::new();
+    
             let button_width = ui.available_width()/5.0;
             let button_height = ui.available_height()/8.0;
             if let Some(screenshot) = &self.screenshot{
-
+            
             self.texture = Some(ui.ctx().load_texture(
                 "screenshot",
                 screenshot.clone(),
@@ -395,6 +466,8 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.state.set_server(None);
+                            self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -406,6 +479,8 @@ impl eframe::App for MyApp {
                         let back_button =egui::ImageButton::new((back_img.id(),egui::vec2(button_height/1.7,button_height/1.7))).rounding(30.0);
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.screenshot=None;
+                            self.state.set_server(None);
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -493,7 +568,7 @@ impl eframe::App for MyApp {
                     });
 
                     //visualize screen state
-
+                    /* 
                     ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui|{
                         match self.state.get_sc_state(){
                             StreamingState::START => {
@@ -508,7 +583,158 @@ impl eframe::App for MyApp {
                             StreamingState::STOP => {},
                         };
                     });
-                    
+                    */
+                    if self.state.get_sc_state()==StreamingState::START{
+                        self.screenshot= Some(self.screenshot());
+                    }
+
+                    if let Some(texture) = self.texture.as_ref() {
+
+                        match self.drawings{
+                            Drawing::NONE => {},
+                            Drawing::LINE => {
+
+                                handle_mouse_input(ui, &mut self.line_annotations, &mut self.is_drawing);
+ 
+                            },
+                            Drawing::CIRCLE => {
+
+                                handle_mouse_input(ui, &mut self.circle_annotations, &mut self.is_drawing);
+
+                            },
+                            Drawing::TEXT => {
+
+                                handle_text_input(ui, &mut self.text_annotation, &mut self.is_drawing);
+
+                            },
+                        }
+
+                        for &(start, end) in &self.line_annotations {
+                            println!("start: {:?}, end: {:?}",start,end);
+                            shapes.push(egui::Shape::line_segment(
+                            [start,end],
+                            egui::Stroke::new(2.0, Color32::RED),
+                        ));
+                        }
+
+                        for &(start, end) in &self.circle_annotations {
+                                
+                            shapes.push(egui::Shape::circle_stroke(
+                                start, 
+                                ((start.x-end.x).powi(2)+(start.y-end.y).powi(2)).sqrt(),
+                                egui::Stroke::new(2.0, Color32::RED)));
+                            }
+
+                        for (start, text) in &mut self.text_annotation {
+                            
+                            ui.fonts(|f|{
+                                let t = egui::Shape::text(f, *start, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
+                                shapes.push(t);
+                            });
+                            
+                            
+                            }
+                        
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
+                            ui.image((texture.id(), egui::vec2(ui.available_width()*4.0/5.0,ui.available_height())));
+
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui|{
+
+                                ui.horizontal(|ui|{
+                                    ui.label("Annotations");
+                                });
+
+                                ui.add_space(10.0);
+
+                                ui.horizontal(|ui|{
+                                    let draw_line_button = egui::Button::new("Line").min_size(ui.available_size()).fill(
+                                        if self.drawings==Drawing::LINE{
+                                            Color32::GREEN
+                                        }
+                                        else{
+                                            Color32::GRAY
+                                        }
+                                    );
+                                    if ui.add(draw_line_button).clicked(){
+                                    if self.drawings==Drawing::LINE{
+                                        self.drawings=Drawing::NONE;
+                                    }
+                                    else{
+                                        self.drawings=Drawing::LINE;
+                                    } 
+                                    }
+                            
+                                });
+
+                                ui.horizontal(|ui|{
+                                    let draw_circle_button = egui::Button::new("Circle").min_size(ui.available_size()).fill(
+                                        if self.drawings==Drawing::CIRCLE{
+                                            Color32::GREEN
+                                        }
+                                        else{
+                                            Color32::GRAY
+                                        }
+                                    );
+                                    if ui.add(draw_circle_button).clicked(){
+                                    
+                                    if self.drawings==Drawing::CIRCLE{
+                                        self.drawings=Drawing::NONE;
+                                    }
+                                    else{
+                                        self.drawings=Drawing::CIRCLE;
+                                    }
+                                    
+                                    }
+                                });
+
+                                ui.horizontal(|ui|{
+                                    let draw_text_button = egui::Button::new("Text").min_size(ui.available_size()).fill(
+                                        if self.drawings==Drawing::TEXT{
+                                            Color32::GREEN
+                                        }
+                                        else{
+                                            Color32::GRAY
+                                        }
+                                    );
+                                    if ui.add(draw_text_button).clicked(){
+                                    
+                                    if self.drawings==Drawing::TEXT{
+                                        self.drawings=Drawing::NONE;
+                                    }
+                                    else{
+                                        self.drawings=Drawing::TEXT;
+                                    }
+                                    
+                                    }
+                                });
+
+                                ui.add_space(10.0);
+
+                                ui.horizontal(|ui|{
+                                    let clear_button = egui::Button::new("Clear All").min_size(ui.available_size()).fill(Color32::GRAY);
+                                    if ui.add(clear_button).clicked(){
+                                        self.line_annotations.clear();
+                                        self.circle_annotations.clear();
+                                        self.text_annotation.clear();
+                                        shapes.clear();
+                                    }
+                                });
+
+                            });
+                            
+                            let painter = ui.painter();
+                            if self.drawings!=Drawing::NONE{
+                                painter.extend(shapes);
+
+                            }
+                            
+                        });
+
+                    }  else {
+                        ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
+                            ui.spinner();
+                        });
+                    }
                      
                     //HANDLE SHORTCUTS
                     ui.input(|i|{
@@ -553,7 +779,7 @@ impl eframe::App for MyApp {
                         self.temp_shortcut=None;
                              
                     });
-                    //ctx.request_repaint();
+                    ctx.request_repaint();
         
                 },
                 Pages::SETTING => {

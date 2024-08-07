@@ -148,16 +148,16 @@ impl screen_state {
         *f=n;
     }
 
-    pub fn set_server(&self,server:Server){
+    pub fn set_server(&self,server:Option<Server>){
         let mut s= self.server.lock().unwrap();
 
-        *s=Some(server);
+        *s=server;
     }
 
-    pub fn set_client(&self,tcp:TcpStream,client:Client){
+    pub fn set_client(&self,client:Option<(TcpStream,Client)>){
         let mut c= self.client_stream.lock().unwrap();
 
-        *c=Some((tcp,client));
+        *c=client;
     }
 
     pub fn send_to_clients(&self,v:Vec<u8>)->Result<(()),Error>{
@@ -247,6 +247,11 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                                 let pixel = sub_image.get_pixel(x, y);
                                 image::Rgb([pixel[0], pixel[1], pixel[2]])
                             });
+
+                            state.set_frame(ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
+                                let pixel = sub_image.get_pixel(x, y);
+                                image::Rgba([pixel[0], pixel[1], pixel[2], pixel[3]])
+                            }));
                         
                             if screenshot_frame.width> 10 {
                             let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
