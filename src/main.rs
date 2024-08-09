@@ -10,7 +10,7 @@ use std::thread::JoinHandle;
 use std::{env, thread};
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
-use winapi::shared::winerror::SEC_E_ONLY_HTTPS_ALLOWED;
+//use winapi::shared::winerror::SEC_E_ONLY_HTTPS_ALLOWED;
 use std::mem::needs_drop;
 use local_ip_address::local_ip;
 use image::{ImageBuffer, Rgba};
