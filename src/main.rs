@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{env, thread};
+use egui_dropdown::DropDownBox;
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
 use winit::monitor;
@@ -176,6 +177,7 @@ struct MyApp {
     text_annotation: Vec<(egui::Pos2,String)>,
     is_drawing :bool,
     drawings: Drawing,
+    monitor_number: u8
 }
 
 impl MyApp{
@@ -331,6 +333,23 @@ impl eframe::App for MyApp {
                     ui.horizontal(|ui|{
                         match self.my_enum{
                             CastRecEnum::Caster => {
+                                ui.horizontal(|ui|{
+                                    ui.label("Indice monitor:");
+
+                                    let monitor= getMonitors();
+                            
+                                    egui::ComboBox::from_label("")
+                                    .selected_text(format!("{}", self.monitor_number))
+                                    .show_ui(ui, |ui| {
+                                        for num in 0..monitor.len() as u8 {
+                                            ui.selectable_value(&mut self.monitor_number, num, format!("{num}"));
+                                        }
+                                    });
+
+                                    self.state.set_n_monitor(self.monitor_number.clone());
+
+                                });
+
                                 let main_button = egui::Button::new("Condividi schermo").min_size(egui::vec2(ui.available_width(), button_height/2.0));
                                 if ui.add(main_button).clicked(){
                                     self.current_page = Pages::CASTER; 
@@ -365,10 +384,10 @@ impl eframe::App for MyApp {
 
                     ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
 
-                    let monitor= getMonitors();
-                    ui.horizontal(|ui|{
-                        ui.label("Numero di monitor disponibili: ".to_string() + &monitor.len().to_string());
-                    });
+                    
+                    // ui.horizontal(|ui|{
+                    //     ui.label("Numero di monitor disponibili: ".to_string() + &monitor.len().to_string());
+                    // });
             
                 },
                 Pages::RECEIVER=>{

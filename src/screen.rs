@@ -50,7 +50,8 @@ pub struct screen_state{
     pub cv: std::sync::Condvar,
     pub client_stream: Arc<Mutex<Option<(TcpStream,Client)>>>,
     pub server: Arc<Mutex<Option<Server>>>,
-    pub recording: Arc<Mutex<Option<bool>>>
+    pub recording: Arc<Mutex<Option<bool>>>,
+    pub n_monitor: Arc<Mutex<u8>>
 
 }
 
@@ -68,7 +69,8 @@ impl Default for screen_state{
             red_factor: Arc::new(Mutex::new(100)),
             client_stream: Arc::new(Mutex::new(None)),
             server: Arc::new(Mutex::new(None)),
-            recording: Arc::new(Mutex::new(None))
+            recording: Arc::new(Mutex::new(None)),
+            n_monitor : Arc::new(Mutex::new(0))
          }
     }
 }
@@ -84,6 +86,18 @@ impl screen_state {
         let f = self.stream_state.lock().unwrap();
         
         f.clone()
+    }
+
+    pub fn get_n_monitor(&self)->u8{
+        let n = self.n_monitor.lock().unwrap();
+
+        n.clone()
+    }
+    
+    pub fn set_n_monitor(&self, nm:u8){
+        let mut n = self.n_monitor.lock().unwrap();
+
+        *n=nm;
     }
 
     pub fn set_frame(&self,frame:ImageBuffer<Rgba<u8>, Vec<u8>>){
@@ -241,7 +255,8 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 let screenshot_frames: Arc<Mutex<BGRAFrame>> = Arc::new(Mutex::new(BGRAFrame{width: 0, display_time:0, height: 0, data: vec![]}));
                 let screenshot_frames_clone = screenshot_frames.clone();
                 let monitor = getMonitors();
-                let recorder = setRecorder(monitor[0].clone());
+                let n = state.get_n_monitor();
+                let recorder = setRecorder(monitor[n as usize].clone());
                 let state_clone = state.clone();
                 let a = std::thread::spawn(move || {
                 
