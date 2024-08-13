@@ -10,6 +10,7 @@ use std::thread::JoinHandle;
 use std::{env, thread};
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
+use winit::monitor;
 //use winapi::shared::winerror::SEC_E_ONLY_HTTPS_ALLOWED;
 use std::mem::needs_drop;
 use local_ip_address::local_ip;
@@ -18,6 +19,7 @@ use eframe::egui::{self, Button, Color32, ColorImage, Key, KeyboardShortcut, Mod
 //use screen::screen;
 use crate::enums::StreamingState;
 use screen::net::net::*;
+use screen::capture::capture::*;
 
 #[derive(PartialEq, Debug, Default)]
 enum CastRecEnum { 
@@ -362,6 +364,11 @@ impl eframe::App for MyApp {
                     ui.add_space(10.0);
 
                     ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
+
+                    let monitor= getMonitors();
+                    ui.horizontal(|ui|{
+                        ui.label("Numero di monitor disponibili: ".to_string() + &monitor.len().to_string());
+                    });
             
                 },
                 Pages::RECEIVER=>{

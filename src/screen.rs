@@ -1,11 +1,11 @@
 pub(crate) mod net;
 mod encoder;
 mod decoder;
-mod capture;
+pub(crate) mod capture;
 mod videowriter;
 pub mod screen{
     
-
+use chrono::prelude::*;
 use std::net::TcpStream;
 use std::{fs::File, io::Write, path::Path};
 
@@ -25,6 +25,7 @@ use pixels::Error;
 use std::sync::{Arc, Mutex};
 
 use crate::enums::StreamingState;
+use crate::screen::capture::capture::getMonitors;
 use super::net::net::*;
 //use super::net::net::{receive_screenshot,send_screenshot};
 use super::capture::capture::{loopRecorder,setRecorder};
@@ -239,8 +240,8 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
             
                 let screenshot_frames: Arc<Mutex<BGRAFrame>> = Arc::new(Mutex::new(BGRAFrame{width: 0, display_time:0, height: 0, data: vec![]}));
                 let screenshot_frames_clone = screenshot_frames.clone();
-                
-                let recorder = setRecorder();
+                let monitor = getMonitors();
+                let recorder = setRecorder(monitor[0].clone());
                 let state_clone = state.clone();
                 let a = std::thread::spawn(move || {
                 
@@ -256,10 +257,10 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let screenshot_frame = screenshot_framex.clone();
                             drop(screenshot_framex);
                             
-                            let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(2000, 1000, screenshot_frame.data.clone()).unwrap();
+                            let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(screenshot_frame.width as u32, screenshot_frame.height as u32, screenshot_frame.data.clone()).unwrap();
                             
                             //TODO: instead of cropping we should send variable image size and communicate the actual size with the struct sent, and then display a variable size image 
-                            let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), 2000*state.get_f()/100, 1000*state.get_f()/100).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
+                            let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), screenshot_frame.width as u32*state.get_f()/100, screenshot_frame.height as u32*state.get_f()/100).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
                             let dim = buffer_image.dimensions();
                             println!("{:?}",dim);
                             let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, dim.0, dim.1);
@@ -403,7 +404,11 @@ fn convert_rgba_to_rgb(
 
 fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>)->JoinHandle<()> {
     thread::spawn(move || {
-        let mut video_writer = VideoWriter::new(100, "video.h264".to_string());
+        let now: DateTime<Local> = Local::now();
+
+        // Format the time as a human-readable string
+        let formatted_time = now.format("video_%Y_%m_%d__%H_%M_%S.h264").to_string();
+        let mut video_writer = VideoWriter::new(100, formatted_time);
         //TODO this recording flag arrive from state and is setted by the user
         loop { 
             match state.get_sc_state(){
