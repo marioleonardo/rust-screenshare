@@ -16,7 +16,7 @@ use winit::monitor;
 use std::mem::needs_drop;
 use local_ip_address::local_ip;
 use image::{ImageBuffer, Rgba};
-use eframe::egui::{self, Button, Color32, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, PointerButton, Pos2, TextBuffer};
+use eframe::egui::{self, Button, Color32, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, PointerButton, Pos2, Rect, TextBuffer};
 //use screen::screen;
 use crate::enums::StreamingState;
 use screen::net::net::*;
@@ -77,64 +77,6 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-fn handle_mouse_input(ui: &egui::Ui, annotations: &mut Vec<(egui::Pos2, egui::Pos2)>, is_drawing:&mut bool) {
-
-    ui.input(|i|{
-        for event in &i.raw.events{
-            if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
-                if *pressed && *button==PointerButton::Primary{
-
-                    
-                    *is_drawing=true;
-                    annotations.push((*pos,*pos)); 
-                    
-                }
-                else if !*pressed {
-                    
-                    *is_drawing=false;
-                }
-
-            };
-            if let egui::Event::PointerMoved(pos) = event{
-                if *is_drawing==true{
-                    
-                    if let Some(last_ann) = annotations.last_mut() {
-                    
-                        last_ann.1 = *pos;
-                    }
-                    
-                    
-                }
-                
-            }
-
-        }   
-    }); 
-}
-
-fn handle_text_input(ui: &egui::Ui, annotations: &mut Vec<(egui::Pos2, String)>, is_drawing:&mut bool) {
-
-    ui.input(|i|{
-        for event in &i.raw.events{
-            if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
-                
-                if *pressed && *button==PointerButton::Primary{
-                    annotations.push((*pos,String::new()));
-                    
-                }
-
-            };
-            if let egui::Event::Text(text)= event{
-                if let Some(last_ann) = annotations.last_mut() {
-                    
-                    last_ann.1.push_str(&text);
-                }
-            }
-        }   
-    }); 
-}
-
-
 fn main() -> eframe::Result<()> {
     
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -177,10 +119,103 @@ struct MyApp {
     text_annotation: Vec<(egui::Pos2,String)>,
     is_drawing :bool,
     drawings: Drawing,
-    monitor_number: u8
+    monitor_number: u8,
+    img_rect: Option<Rect>,
 }
 
 impl MyApp{
+
+    fn handle_mouse_input(&mut self, ui: &egui::Ui) {
+
+        ui.input(|i|{
+            for event in &i.raw.events{
+                if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
+                    if *pressed && *button==PointerButton::Primary{
+                        
+                        let rect = self.img_rect.unwrap();
+                        let min = rect.min;
+                        let max = rect.max;
+                        let w = max.x - min.x;
+                        let h = max.y - min.y;
+                        self.is_drawing=true;
+                        match self.drawings{
+                            Drawing::NONE => {},
+                            Drawing::LINE => {
+                                let x1= (pos.x- min.x) / w ;
+                                let y1 = (pos.y- min.y) / h ;
+                                self.line_annotations.push((Pos2{x:x1, y:y1},Pos2{x:x1, y:y1}));  
+                            },
+                            Drawing::CIRCLE => {
+                                let x1= (pos.x- min.x) / w ;
+                                let y1 = (pos.y- min.y) / h ;
+                                self.circle_annotations.push((Pos2{x:x1, y:y1},Pos2{x:x1, y:y1}));
+                            },
+                            Drawing::TEXT => {},
+                        }
+                    }
+                    else if !*pressed {
+                        self.is_drawing=false;
+                    }
+    
+                };
+                if let egui::Event::PointerMoved(pos) = event{
+                    if self.is_drawing==true{
+
+                        let rect = self.img_rect.unwrap();
+                        let min = rect.min;
+                        let max = rect.max;
+                        let w = max.x - min.x;
+                        let h = max.y - min.y;
+
+                        match self.drawings{
+                            Drawing::NONE => {},
+                            Drawing::LINE => {
+                                if let Some(last_ann) = self.line_annotations.last_mut() {
+                                    let x2= (pos.x- min.x) / w ;
+                                    let y2 = (pos.y- min.y) / h ;
+                                    last_ann.1 = Pos2{x:x2, y:y2};
+                                } 
+                            },
+                            Drawing::CIRCLE => {
+                                if let Some(last_ann) = self.circle_annotations.last_mut() {
+                        
+                                    let x2= (pos.x- min.x) / w ;
+                                    let y2 = (pos.y- min.y) / h ;
+                                    last_ann.1 = Pos2{x:x2, y:y2};
+                                } 
+                            },
+                            Drawing::TEXT => {},
+                        }
+                           
+                    }
+                    
+                }
+    
+            }   
+        }); 
+    }
+
+    fn handle_text_input(&mut self,ui: &egui::Ui) {
+
+        ui.input(|i|{
+            for event in &i.raw.events{
+                if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
+                    
+                    if *pressed && *button==PointerButton::Primary{
+                        self.text_annotation.push((*pos,String::new()));
+                        
+                    }
+    
+                };
+                if let egui::Event::Text(text)= event{
+                    if let Some(last_ann) = self.text_annotation.last_mut() {
+                        
+                        last_ann.1.push_str(&text);
+                    }
+                }
+            }   
+        }); 
+    }
 
     fn start_cast_function(&mut self){
 
@@ -384,10 +419,6 @@ impl eframe::App for MyApp {
 
                     ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
 
-                    
-                    // ui.horizontal(|ui|{
-                    //     ui.label("Numero di monitor disponibili: ".to_string() + &monitor.len().to_string());
-                    // });
             
                 },
                 Pages::RECEIVER=>{
@@ -513,7 +544,7 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
-                            //self.state.set_server(None);
+                            self.state.set_server(None);
                             self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
@@ -527,7 +558,7 @@ impl eframe::App for MyApp {
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.screenshot=None;
-                            //self.state.set_server(None);
+                            self.state.set_server(None);
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -625,61 +656,39 @@ impl eframe::App for MyApp {
                         ui.label(my_local_ip.to_string()+":7878");
                     });
 
-                    //visualize screen state
-                    /* 
-                    ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui|{
-                        match self.state.get_sc_state(){
-                            StreamingState::START => {
-                                ui.label("Trasmitting...");
-                            },
-                            StreamingState::PAUSE => {
-                                ui.label("Streaming Pause...");
-                            },
-                            StreamingState::BLANK => {
-                                ui.label("Streaming Blank...");
-                            },
-                            StreamingState::STOP => {},
-                        };
-                    });
-                    */
+                    
                     if self.state.get_sc_state()==StreamingState::START{
                         self.screenshot= Some(self.screenshot());
                     }
 
                     if let Some(texture) = self.texture.as_ref() {
-
-                        match self.drawings{
-                            Drawing::NONE => {},
-                            Drawing::LINE => {
-
-                                handle_mouse_input(ui, &mut self.line_annotations, &mut self.is_drawing);
- 
-                            },
-                            Drawing::CIRCLE => {
-
-                                handle_mouse_input(ui, &mut self.circle_annotations, &mut self.is_drawing);
-
-                            },
-                            Drawing::TEXT => {
-
-                                handle_text_input(ui, &mut self.text_annotation, &mut self.is_drawing);
-
-                            },
-                        }
+                        let rect = self.img_rect.unwrap();
+                        let min = rect.min;
+                        let max = rect.max;
+                        let w = max.x - min.x;
+                        let h = max.y - min.y;
 
                         for &(start, end) in &self.line_annotations {
                             println!("start: {:?}, end: {:?}",start,end);
+                            let x1= start.x*w +min.x;
+                            let y1= start.y*h +min.y;
+                            let x2= end.x*w +min.x;
+                            let y2= end.y*h + min.y;
                             shapes.push(egui::Shape::line_segment(
-                            [start,end],
+                            [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
                             egui::Stroke::new(2.0, Color32::RED),
                         ));
                         }
 
                         for &(start, end) in &self.circle_annotations {
+                            let x1= start.x*w +min.x;
+                            let y1= start.y*h +min.y;
+                            let x2= end.x*w +min.x;
+                            let y2= end.y*h + min.y;
                                 
                             shapes.push(egui::Shape::circle_stroke(
-                                start, 
-                                ((start.x-end.x).powi(2)+(start.y-end.y).powi(2)).sqrt(),
+                                Pos2{x:x1, y:y1}, 
+                                ((x1-x2).powi(2)+(y1-y2).powi(2)).sqrt(),
                                 egui::Stroke::new(2.0, Color32::RED)));
                             }
 
@@ -689,12 +698,11 @@ impl eframe::App for MyApp {
                                 let t = egui::Shape::text(f, *start, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
                                 shapes.push(t);
                             });
-                            
-                            
+                             
                             }
                         
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
-                            ui.image((texture.id(), egui::vec2(ui.available_width()*4.0/5.0,ui.available_height())));
+                            self.img_rect = Some(ui.image((texture.id(), egui::vec2(ui.available_width()*4.0/5.0,ui.available_height()))).rect);
 
                             ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui|{
 
@@ -780,11 +788,15 @@ impl eframe::App for MyApp {
 
                             });
                             
-                            let painter = ui.painter();
-                            if self.drawings!=Drawing::NONE{
-                                painter.extend(shapes);
+                            if let Some(rect) = self.img_rect{
+                                let painter = ui.painter_at(rect);
+                            
+                                if self.drawings!=Drawing::NONE{
+                                    painter.extend(shapes);
 
                             }
+                            }
+                            
                             
                         });
 
@@ -792,6 +804,25 @@ impl eframe::App for MyApp {
                         ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
                             ui.spinner();
                         });
+                    }
+
+                    match self.drawings{
+                        Drawing::NONE => {},
+                        Drawing::LINE => {
+
+                            self.handle_mouse_input(ui);
+
+                        },
+                        Drawing::CIRCLE => {
+
+                            self.handle_mouse_input(ui);
+
+                        },
+                        Drawing::TEXT => {
+
+                            self.handle_text_input(ui);
+
+                        },
                     }
                      
                     //HANDLE SHORTCUTS
