@@ -17,6 +17,9 @@ pub mod net {
         pub width: u32,
         pub height: u32,
         pub state: State,
+        pub line_annotation: Option<Vec<(f32, f32, f32, f32)>>,
+        pub circle_annotation: Option<Vec<(f32, f32, f32, f32)>>,
+        pub text_annotation: Option<Vec<(f32, f32, String)>>,
     }
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]

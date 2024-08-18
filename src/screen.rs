@@ -51,7 +51,10 @@ pub struct screen_state{
     pub client_stream: Arc<Mutex<Option<(TcpStream,Client)>>>,
     pub server: Arc<Mutex<Option<Server>>>,
     pub recording: Arc<Mutex<Option<bool>>>,
-    pub n_monitor: Arc<Mutex<u8>>
+    pub n_monitor: Arc<Mutex<u8>>,
+    pub line_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
+    pub circle_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
+    pub text_annotation: Arc<Mutex<Option<Vec<(f32, f32, String)>>>>,
 
 }
 
@@ -70,7 +73,11 @@ impl Default for screen_state{
             client_stream: Arc::new(Mutex::new(None)),
             server: Arc::new(Mutex::new(None)),
             recording: Arc::new(Mutex::new(None)),
-            n_monitor : Arc::new(Mutex::new(0))
+            n_monitor : Arc::new(Mutex::new(0)),
+            line_annotation: Arc::new(Mutex::new(None)),
+            circle_annotation : Arc::new(Mutex::new(None)),
+            text_annotation: Arc::new(Mutex::new(None))
+
          }
     }
 }
@@ -191,15 +198,56 @@ impl screen_state {
         *c=client;
     }
 
+    pub fn set_line_ann(&self, pos: Vec<(f32, f32, f32, f32)>){
+        let mut a = self.line_annotation.lock().unwrap();
+
+        *a = Some(pos);
+    }
+
+    pub fn get_line_ann(&self)->Option<Vec<(f32, f32, f32, f32)>>{
+        let a = self.line_annotation.lock().unwrap();
+
+        a.clone()
+    }
+
+    pub fn set_circle_ann(&self, pos: Vec<(f32, f32, f32, f32)>){
+        let mut a = self.circle_annotation.lock().unwrap();
+
+        *a = Some(pos);
+    }
+
+    pub fn get_circle_ann(&self)->Option<Vec<(f32, f32, f32, f32)>>{
+        let a = self.circle_annotation.lock().unwrap();
+
+        a.clone()
+    }
+
+    pub fn set_text_ann(&self, pos: Vec<(f32, f32, String)>){
+        let mut a = self.text_annotation.lock().unwrap();
+
+        *a = Some(pos);
+    }
+
+    pub fn get_text_ann(&self)->Option<Vec<(f32, f32, String)>>{
+        let a = self.text_annotation.lock().unwrap();
+
+        a.clone()
+    }
+
     pub fn send_to_clients(&self,v:Vec<u8>,w:u32,h:u32,state:State)->Result<(()),Error>{
         let s = self.server.lock().unwrap();
-        
+        let lines = self.get_line_ann();
+        let circles = self.get_circle_ann();
+        let text = self.get_text_ann();
         if let Some(server) =s.as_ref(){
         let screenshot_data = Screenshot {
             data: v,
             width: w,  // Placeholder width
             height: h, // Placeholder height
             state,
+            line_annotation: lines,
+            circle_annotation: circles,
+            text_annotation: text,
         };
         let res = server.send_to_all_clients(&screenshot_data);
         println!("inviato: {:?}",res)
@@ -295,16 +343,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                         },
                         
                         StreamingState::PAUSE =>{
-                            // let buffer_image= paused_img.clone();
-                            // let rgb_img = ImageBuffer::<image::Rgb<u8>, Vec<u8>>::from_fn(2000, 1000, |x, y| {
-                            //     let pixel = buffer_image.get_pixel(x, y);
-                            //     image::Rgb([pixel[0], pixel[1], pixel[2]])
-                            // });
-                        
                             
-                            // let (_width, _height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
-                            // let ip = state.get_ip_receiver();
-                            // let _ = send_screenshot(&mut encoded_frames,ip);
                             state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START && *s!=StreamingState::BLANK);
             
                         },
@@ -437,7 +476,17 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                 StreamingState::START =>{
                     let ip = state.get_ip_sender();
                     let new_screenshot = state.receive_from_server().unwrap();
-                    println!("{:?}",new_screenshot.state);
+                    println!("{:?}",new_screenshot.line_annotation);
+                    if let Some(lines) = new_screenshot.line_annotation{
+                        state.set_line_ann(lines);
+                    }
+                    if let Some(circles) = new_screenshot.circle_annotation{
+                        state.set_circle_ann(circles);
+                    }
+                    if let Some(text) = new_screenshot.text_annotation{
+                        state.set_text_ann(text);
+                    }
+                    
                     if let Some(recording) = state.get_rec() {
 
                         if recording {

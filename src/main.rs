@@ -199,10 +199,18 @@ impl MyApp{
 
         ui.input(|i|{
             for event in &i.raw.events{
+                let rect = self.img_rect.unwrap();
+                let min = rect.min;
+                let max = rect.max;
+                let w = max.x - min.x;
+                let h = max.y - min.y;
+
                 if let egui::Event::PointerButton { pos, button, pressed, modifiers: _ }= event{
                     
                     if *pressed && *button==PointerButton::Primary{
-                        self.text_annotation.push((*pos,String::new()));
+                        let x2= (pos.x- min.x) / w ;
+                        let y2 = (pos.y- min.y) / h ;
+                        self.text_annotation.push(( Pos2{x:x2, y:y2},String::new()));
                         
                     }
     
@@ -227,7 +235,7 @@ impl MyApp{
             let _ = server.bind_to_ip();
 
             self.state.set_server(Some(server));
-
+            
             self.state.set_screen_state(StreamingState::START);
             self.flag_thread=true;
 
@@ -470,7 +478,61 @@ impl eframe::App for MyApp {
                     });
 
                     if let Some(texture) = self.texture.as_ref() {
-                        ui.image((texture.id(), ui.available_size()));
+                        if let Some(rect) = self.img_rect{
+                            let min = rect.min;
+                            let max = rect.max;
+                            let w = max.x - min.x;
+                            let h = max.y - min.y;
+
+                            if let Some(ann) = self.state.get_line_ann(){
+                                for &(x1, y1, x2, y2) in &ann {
+                                    
+                                    let x1= x1*w +min.x;
+                                    let y1= y1*h +min.y;
+                                    let x2= x2*w +min.x;
+                                    let y2= y2*h + min.y;
+                                    //ui.label(x1.to_string()+": x1 "+ &y1.to_string() + ": y1");
+                                    shapes.push(egui::Shape::line_segment(
+                                    [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
+                                    egui::Stroke::new(2.0, Color32::RED),
+                                ));
+                                }
+                            }
+                            
+                            if let Some(ann) = self.state.get_circle_ann(){
+                                for &(x1, y1, x2, y2) in &ann {
+                                    let x1= x1*w +min.x;
+                                    let y1= y1*h +min.y;
+                                    let x2= x2*w +min.x;
+                                    let y2= y2*h + min.y;
+                                        
+                                    shapes.push(egui::Shape::circle_stroke(
+                                        Pos2{x:x1, y:y1}, 
+                                        ((x1-x2).powi(2)+(y1-y2).powi(2)).sqrt(),
+                                        egui::Stroke::new(2.0, Color32::RED)));
+                                    }
+                            }
+                            
+                            if let Some(ann) = self.state.get_text_ann(){
+                                for (x1, y1, text) in &ann {
+                                    let x1= x1*w +min.x;
+                                    let y1= y1*h +min.y;
+                                    ui.fonts(|f|{
+                                        let t = egui::Shape::text(f, Pos2{x:x1, y:y1}, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
+                                        shapes.push(t);
+                                    });
+                                     
+                                    }
+                            }
+                            
+                        }
+                        self.img_rect = Some(ui.image((texture.id(), ui.available_size())).rect);
+
+                        if let Some(rect) = self.img_rect{
+                            let painter = ui.painter_at(rect);   
+                                painter.extend(shapes);
+                        }
+
                     }  else {
                         ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
                             ui.spinner();
@@ -526,6 +588,7 @@ impl eframe::App for MyApp {
                             StreamingState::STOP => "Start Streaming",
                         }).min_size(egui::vec2(button_width, button_height));
                         if ui.add(start_button).clicked() {
+                            self.state.set_server(None);
                             self.start_cast_function();
                         }
                         
@@ -544,7 +607,7 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
-                            self.state.set_server(None);
+                            //self.state.set_server(None);
                             self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
@@ -558,7 +621,7 @@ impl eframe::App for MyApp {
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.screenshot=None;
-                            self.state.set_server(None);
+                           // self.state.set_server(None);
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -662,43 +725,51 @@ impl eframe::App for MyApp {
                     }
 
                     if let Some(texture) = self.texture.as_ref() {
-                        let rect = self.img_rect.unwrap();
-                        let min = rect.min;
-                        let max = rect.max;
-                        let w = max.x - min.x;
-                        let h = max.y - min.y;
+                        
+                        if let Some(rect) = self.img_rect{
+                            let min = rect.min;
+                            let max = rect.max;
+                            let w = max.x - min.x;
+                            let h = max.y - min.y;
 
-                        for &(start, end) in &self.line_annotations {
-                            println!("start: {:?}, end: {:?}",start,end);
-                            let x1= start.x*w +min.x;
-                            let y1= start.y*h +min.y;
-                            let x2= end.x*w +min.x;
-                            let y2= end.y*h + min.y;
-                            shapes.push(egui::Shape::line_segment(
-                            [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
-                            egui::Stroke::new(2.0, Color32::RED),
-                        ));
-                        }
+                            self.state.set_line_ann(self.line_annotations.iter().map(|(p1,p2)| (p1.x, p1.y, p2.x, p2.y)).collect());
+                            self.state.set_circle_ann(self.circle_annotations.iter().map(|(p1,p2)| (p1.x, p1.y, p2.x, p2.y)).collect());
+                            self.state.set_text_ann(self.text_annotation.iter().map(|(p1,t)| (p1.x, p1.y, t.to_owned())).collect());
 
-                        for &(start, end) in &self.circle_annotations {
-                            let x1= start.x*w +min.x;
-                            let y1= start.y*h +min.y;
-                            let x2= end.x*w +min.x;
-                            let y2= end.y*h + min.y;
+                            for &(start, end) in &self.line_annotations {
                                 
-                            shapes.push(egui::Shape::circle_stroke(
-                                Pos2{x:x1, y:y1}, 
-                                ((x1-x2).powi(2)+(y1-y2).powi(2)).sqrt(),
-                                egui::Stroke::new(2.0, Color32::RED)));
+                                println!("start: {:?}, end: {:?}",start,end);
+                                let x1= start.x*w +min.x;
+                                let y1= start.y*h +min.y;
+                                let x2= end.x*w +min.x;
+                                let y2= end.y*h + min.y;
+                                shapes.push(egui::Shape::line_segment(
+                                [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
+                                egui::Stroke::new(2.0, Color32::RED),
+                            ));
                             }
 
-                        for (start, text) in &mut self.text_annotation {
-                            
-                            ui.fonts(|f|{
-                                let t = egui::Shape::text(f, *start, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
-                                shapes.push(t);
-                            });
-                             
+                            for &(start, end) in &self.circle_annotations {
+                                let x1= start.x*w +min.x;
+                                let y1= start.y*h +min.y;
+                                let x2= end.x*w +min.x;
+                                let y2= end.y*h + min.y;
+                                    
+                                shapes.push(egui::Shape::circle_stroke(
+                                    Pos2{x:x1, y:y1}, 
+                                    ((x1-x2).powi(2)+(y1-y2).powi(2)).sqrt(),
+                                    egui::Stroke::new(2.0, Color32::RED)));
+                                }
+
+                            for (start, text) in &mut self.text_annotation {
+                                let x1= start.x*w +min.x;
+                                let y1= start.y*h +min.y;
+                                ui.fonts(|f|{
+                                    let t = egui::Shape::text(f, Pos2{x:x1, y:y1}, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
+                                    shapes.push(t);
+                                });
+                                
+                                }
                             }
                         
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
@@ -770,7 +841,6 @@ impl eframe::App for MyApp {
                                     else{
                                         self.drawings=Drawing::TEXT;
                                     }
-                                    
                                     }
                                 });
 
@@ -793,11 +863,8 @@ impl eframe::App for MyApp {
                             
                                 if self.drawings!=Drawing::NONE{
                                     painter.extend(shapes);
-
                             }
                             }
-                            
-                            
                         });
 
                     }  else {
@@ -832,7 +899,6 @@ impl eframe::App for MyApp {
                                 if *pressed{   
                                     self.temp_shortcut=Some(egui::KeyboardShortcut::new(modifiers.clone(), key.clone()));
                                 }
-                            
                             }
                             
                         }
@@ -840,6 +906,7 @@ impl eframe::App for MyApp {
                         if let Some(sct) = self.temp_shortcut{
                             if let Some(sc) = self.start_shortcut{
                                 if sct == sc {
+                                    self.state.set_server(None);
                                     self.start_cast_function();
                                     self.temp_shortcut=None;
                                 }
