@@ -1,33 +1,44 @@
 pub mod capture{
+    
     use scap::{
         capturer::{Area, Capturer, Options, Point, Size},
-        frame::{BGRAFrame, Frame, FrameType},
+        frame::{BGRAFrame, Frame, FrameType}, Target,
     };
-    use std::sync::{Arc, Mutex};
+    use std::{sync::{Arc, Mutex}};
 
     use crate::{enums::StreamingState, screen::screen::screen_state};
     
-    pub fn setRecorder() -> Capturer{
+    pub fn getMonitors()-> Vec<Target>{
+        let targets = scap::get_all_targets();
 
-        let targets = scap::get_targets();
-        //println!("🎯 Targets: {:?}", targets);
+
+        let targets = targets.iter().filter_map(|x| {
+            if let Target::Display(_) = x {
+                Some(x.clone())
+            } else {
+                None
+            }
+        }).collect::<Vec<Target>>();
+
+        return targets;
+    }
+    
+
+    pub fn setRecorder(target:Target) -> Capturer{
+
+        let targets = scap::get_all_targets();
+        println!("🎯 Targets: {:?}", targets);
     
         // #4 Create Options
         let options = Options {
             fps: 10,
-            targets,
+            target: Some(target),
             show_cursor: true,
             show_highlight: true,
             excluded_targets: None,
             output_type: FrameType::YUVFrame,
             output_resolution: scap::capturer::Resolution::_720p,
-            source_rect: Some(Area {
-                origin: Point { x: 0.0, y: 0.0 },
-                size: Size {
-                    width: 2000.0,
-                    height: 1000.0,
-                },
-            }),
+            
             ..Default::default()
         };
     
@@ -39,7 +50,7 @@ pub mod capture{
     
         recorder
     }
-    
+
     pub fn loopRecorder( mut recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>, state: Arc<screen_state>){
     
         let mut fps_counter = 0;
@@ -95,7 +106,7 @@ pub mod capture{
                         match state.get_sc_state(){
                             StreamingState::START => {
                                 let mut screenshot_clone=screenshot_clone.lock().unwrap();
-                                *screenshot_clone = frame;
+                                *screenshot_clone = frame.clone();
 
                                 fps_counter += 1;
                                 let elapsed = last_fps_time.elapsed();
@@ -105,6 +116,7 @@ pub mod capture{
                                 fps_counter = 0;
                                 last_fps_time = std::time::Instant::now();
                                 }
+                            
                             },
                             StreamingState::PAUSE => {
                                 state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
