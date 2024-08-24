@@ -36,7 +36,7 @@ pub mod capture{
             show_cursor: true,
             show_highlight: true,
             excluded_targets: None,
-            output_type: FrameType::YUVFrame,
+            output_type: FrameType::BGRAFrame,
             output_resolution: scap::capturer::Resolution::_720p,
             
             ..Default::default()
@@ -60,7 +60,7 @@ pub mod capture{
             frames.clear();
             
             for i in 0..20 {
-                let frame = recorder.get_next_frame().expect("Error");
+                let mut frame = recorder.get_next_frame().expect("Error");
     
                 match frame {
                     Frame::YUVFrame(frame) => {
@@ -101,10 +101,14 @@ pub mod capture{
                             frame.width, frame.height
                         );
                     }
-                    Frame::BGRA(frame) => {
+                    Frame::BGRA(mut frame) => {
     
                         match state.get_sc_state(){
                             StreamingState::START => {
+                                for chunk in frame.data.chunks_exact_mut(4) {
+                                    // Swap the first (blue) and third (red) elements
+                                    chunk.swap(0, 2);
+                                }
                                 let mut screenshot_clone=screenshot_clone.lock().unwrap();
                                 *screenshot_clone = frame.clone();
 
