@@ -23,7 +23,35 @@ pub mod capture{
         return targets;
     }
     
+    #[cfg(target_os = "linux")]
+    pub fn setRecorder(target:u8) -> Capturer{
 
+        let targets = scap::get_all_targets();
+        println!("🎯 Targets: {:?}", targets);
+    
+        // #4 Create Options
+        let options = Options {
+            fps: 10,
+            //target: Some(target),
+            show_cursor: true,
+            show_highlight: true,
+            excluded_targets: None,
+            output_type: FrameType::BGRAFrame,
+            output_resolution: scap::capturer::Resolution::_720p,
+            
+            ..Default::default()
+        };
+    
+        // #5 Create Recorder
+        let mut recorder = Capturer::new(options);
+    
+        // #6 Start Capture
+        recorder.start_capture();
+    
+        recorder
+    }
+
+    #[cfg(target_os = "windows")]
     pub fn setRecorder(target:Target) -> Capturer{
 
         let targets = scap::get_all_targets();
@@ -95,11 +123,57 @@ pub mod capture{
                             frame.width, frame.height
                         );
                     }
-                    Frame::BGRx(frame) => {
+                    Frame::BGRx(mut frame) => {
                         println!(
                             "Recieved BGRx frame of width {} and height {}",
                             frame.width, frame.height
                         );
+                        match state.get_sc_state(){
+                            
+                            StreamingState::START => {
+                                let mut bgra_data = Vec::with_capacity((frame.width * frame.height * 4) as usize);
+
+                                // Iterate over the BGRx data in chunks of 4 (BGRx format)
+                                for chunk in frame.data.chunks_exact(4) {
+                                    // Copy B, G, R channels and insert alpha (255)
+                                    bgra_data.push(chunk[0]); // Blue
+                                    bgra_data.push(chunk[1]); // Green
+                                    bgra_data.push(chunk[2]); // Red
+                                    bgra_data.push(255);      // Alpha (Opaque)
+                                }
+
+                                let mut bgra_frame = BGRAFrame {
+                                    display_time: frame.display_time,
+                                    width: frame.width,
+                                    height: frame.height,
+                                    data: bgra_data,
+                                };
+
+                                for chunk in bgra_frame.data.chunks_exact_mut(4) {
+                                    // Swap the first (blue) and third (red) elements
+                                    chunk.swap(0, 2);
+                                }
+                                let mut screenshot_clone=screenshot_clone.lock().unwrap();
+                                *screenshot_clone = bgra_frame.clone();
+
+                                fps_counter += 1;
+                                let elapsed = last_fps_time.elapsed();
+                                if elapsed >= std::time::Duration::from_secs(1) {
+                                let fps = fps_counter as f64 / elapsed.as_secs_f64();
+                                println!("FPS: {:.2}", fps);
+                                fps_counter = 0;
+                                last_fps_time = std::time::Instant::now();
+                                }
+                            
+                            },
+                            StreamingState::PAUSE => {
+                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            },
+                            StreamingState::BLANK => {
+                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                            },
+                            StreamingState::STOP => {}
+                        }
                     }
                     Frame::BGRA(mut frame) => {
     

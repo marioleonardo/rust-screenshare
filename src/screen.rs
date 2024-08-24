@@ -304,7 +304,14 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 let screenshot_frames_clone = screenshot_frames.clone();
                 let monitor = getMonitors();
                 let n = state.get_n_monitor();
-                let recorder = setRecorder(monitor[n as usize].clone());
+                #[cfg(target_os = "linux")]
+                let recorder = setRecorder(0);
+                if cfg!(target_os = "linux") {
+                    
+                } else {
+                    #[cfg(target_os = "windows")]
+                    let recorder = setRecorder(monitor[n as usize]);
+                } 
                 let state_clone = state.clone();
                 let a = std::thread::spawn(move || {
                 
@@ -325,7 +332,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             //TODO: instead of cropping we should send variable image size and communicate the actual size with the struct sent, and then display a variable size image 
                             let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), screenshot_frame.width as u32*state.get_f()/100, screenshot_frame.height as u32*state.get_f()/100).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
                             let dim = buffer_image.dimensions();
-                            println!("{:?}",dim);
+                            //println!("{:?}",dim);
                             let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, dim.0, dim.1);
 
                             
@@ -475,7 +482,10 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                 },
                 StreamingState::START =>{
                     let ip = state.get_ip_sender();
+                    println!("enter");
                     let new_screenshot = state.receive_from_server().unwrap();
+                    println!("after");
+
                     println!("{:?}",new_screenshot.line_annotation);
                     if let Some(lines) = new_screenshot.line_annotation{
                         state.set_line_ann(lines);
