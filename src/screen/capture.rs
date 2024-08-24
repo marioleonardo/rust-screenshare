@@ -79,6 +79,33 @@ pub mod capture{
         recorder
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn setRecorder(target:u8) -> Capturer{
+
+        let targets = scap::get_all_targets();
+        println!("🎯 Targets: {:?}", targets);
+    
+        // #4 Create Options
+        let options = Options {
+            fps: 10,
+            //target: Some(target),
+            show_cursor: true,
+            show_highlight: true,
+            excluded_targets: None,
+            output_type: FrameType::BGRAFrame,
+            output_resolution: scap::capturer::Resolution::_720p,
+            
+            ..Default::default()
+        };
+    
+        // #5 Create Recorder
+        let mut recorder = Capturer::new(options);
+    
+        // #6 Start Capture
+        recorder.start_capture();
+    
+        recorder
+    }
     pub fn loopRecorder( mut recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>, state: Arc<screen_state>){
     
         let mut fps_counter = 0;

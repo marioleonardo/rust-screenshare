@@ -306,12 +306,13 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 let n = state.get_n_monitor();
                 #[cfg(target_os = "linux")]
                 let recorder = setRecorder(0);
-                if cfg!(target_os = "linux") {
-                    
-                } else {
-                    #[cfg(target_os = "windows")]
-                    let recorder = setRecorder(monitor[n as usize]);
-                } 
+
+                #[cfg(target_os = "windows")]
+                let recorder = setRecorder(monitor[n as usize]);
+                
+                #[cfg(target_os = "macos")]
+                let recorder = setRecorder(0);
+
                 let state_clone = state.clone();
                 let a = std::thread::spawn(move || {
                 
