@@ -4,7 +4,7 @@
 mod screen;
 mod enums;
 use std::default;
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::{env, thread};
@@ -226,14 +226,15 @@ impl MyApp{
     }
 
     fn start_cast_function(&mut self){
-
+        self.state.drop_server();
         if !self.flag_thread{
             let my_local_ip = local_ip().unwrap();
             self.state.set_ip_rec(my_local_ip.to_string()+":7878");
 
             let server = Server::new(my_local_ip.to_string()+":7878");
-            let _ = server.bind_to_ip();
-
+            let state_clone1 = self.state.clone(); 
+            let _ = server.bind_to_ip(state_clone1);
+            
             self.state.set_server(Some(server));
             
             self.state.set_screen_state(StreamingState::START);
@@ -253,12 +254,14 @@ impl MyApp{
     }
 
     fn start_rec_function(&mut self){
+        self.state.drop_client();
+
         let client = Client::new(self.server_address.clone(), self.server_address.clone());
         if let Ok(stream) = client.connect_to_ip(){
             self.state.set_client(Some((stream, client)));
             self.state.set_ip_send(self.server_address.clone());
             let state_clone = self.state.clone();
-        
+            self.current_page = Pages::RECEIVER;
             if !self.flag_thread{
             self.state.set_screen_state(StreamingState::START);
             self.flag_thread=true;
@@ -410,8 +413,6 @@ impl eframe::App for MyApp {
                                 });
                                 let main_button = egui::Button::new("Visualizza straming").min_size(egui::vec2(ui.available_width(), button_height/2.0));
                                 if ui.add(main_button).clicked(){
-                                    self.current_page = Pages::RECEIVER;
-
                                     self.start_rec_function();
                                 };
                             },
@@ -491,7 +492,6 @@ impl eframe::App for MyApp {
                                     let y1= y1*h +min.y;
                                     let x2= x2*w +min.x;
                                     let y2= y2*h + min.y;
-                                    //ui.label(x1.to_string()+": x1 "+ &y1.to_string() + ": y1");
                                     shapes.push(egui::Shape::line_segment(
                                     [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
                                     egui::Stroke::new(2.0, Color32::RED),
@@ -588,7 +588,6 @@ impl eframe::App for MyApp {
                             StreamingState::STOP => "Start Streaming",
                         }).min_size(egui::vec2(button_width, button_height));
                         if ui.add(start_button).clicked() {
-                            self.state.set_server(None);
                             self.start_cast_function();
                         }
                         
@@ -607,7 +606,6 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
-                            //self.state.set_server(None);
                             self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
@@ -621,7 +619,6 @@ impl eframe::App for MyApp {
                         if ui.add(back_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.screenshot=None;
-                           // self.state.set_server(None);
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;
                         }
@@ -906,7 +903,6 @@ impl eframe::App for MyApp {
                         if let Some(sct) = self.temp_shortcut{
                             if let Some(sc) = self.start_shortcut{
                                 if sct == sc {
-                                    self.state.set_server(None);
                                     self.start_cast_function();
                                     self.temp_shortcut=None;
                                 }

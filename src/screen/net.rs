@@ -7,6 +7,10 @@ use serde::{Serialize, Deserialize};
 use bincode;
 
 pub mod net {
+    use io::Error;
+
+    use crate::{enums::StreamingState, screen::screen::screen_state};
+
     use super::*;
 
     const CHUNK_SIZE: usize = 10 * 1024;
@@ -43,12 +47,16 @@ pub mod net {
             }
         }
 
-        pub fn bind_to_ip(&self) -> io::Result<()> {
+        pub fn bind_to_ip(&self, state: Arc<screen_state>) -> io::Result<()> {
             let listener = TcpListener::bind(&self.ipaddress)?;
 
             let clients = self.clients.clone();
             thread::spawn(move || {
                 for stream in listener.incoming() {
+                    if state.get_sc_state()==StreamingState::STOP{
+                        drop(listener);
+                        break;
+                    }
                     match stream {
                         Ok(mut stream) => {
                             let client_address = stream.peer_addr().unwrap();
@@ -128,33 +136,53 @@ pub mod net {
         }
 
         pub fn connect_to_ip(&self) -> io::Result<TcpStream> {
-            let stream = TcpStream::connect(&self.server_address)?;
-            println!("Connected to server at {}", self.server_address);
-            Ok(stream)
+            if let Ok(stream) = TcpStream::connect(&self.server_address){
+                println!("Connected to server at {}", self.server_address);
+                Ok(stream)
+            }
+            else{
+                println!("Not connected to server");
+                Err(Error::last_os_error())
+            } 
         }
 
         pub fn is_connected(&self, stream: &TcpStream) -> bool {
             stream.peer_addr().is_ok()
         }
 
-        pub fn receive_image_and_struct(&self, stream: &mut TcpStream) -> io::Result<Screenshot> {
+        pub fn receive_image_and_struct(&self, stream: &mut TcpStream,state:Arc<screen_state>) -> io::Result<Screenshot> {
             const STOP_MESSAGE: &[u8] = b"STOP";
             let mut buffer = vec![0; CHUNK_SIZE];
             let mut data = Vec::new();
             loop {
-                let bytes_read = stream.read(&mut buffer)?;
-                if bytes_read == 0 {
+                if state.get_sc_state()==StreamingState::STOP{
                     break;
                 }
-                if buffer[..bytes_read].ends_with(STOP_MESSAGE) {
-                    data.extend_from_slice(&buffer[..bytes_read - STOP_MESSAGE.len()]);
-                    break;
-                } else {
-                    data.extend_from_slice(&buffer[..bytes_read]);
+                if let Ok(bytes_read) = stream.read(&mut buffer){
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    if buffer[..bytes_read].ends_with(STOP_MESSAGE) {
+                        data.extend_from_slice(&buffer[..bytes_read - STOP_MESSAGE.len()]);
+                        break;
+                    } else {
+                        data.extend_from_slice(&buffer[..bytes_read]);
+                    }
                 }
+                else{
+                    println!("not read");
+                }
+                
             }
-            let screenshot: Screenshot = bincode::deserialize(&data).unwrap();
-            Ok(screenshot)
+            if let Ok(screenshot) = bincode::deserialize::<Screenshot>(&data){
+                println!("{:?}",screenshot.width);
+                Ok(screenshot)
+            }
+            else{
+                Err(Error::last_os_error())
+            }
+            
+            
         }
     }
 }

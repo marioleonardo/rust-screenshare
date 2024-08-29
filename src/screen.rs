@@ -9,18 +9,15 @@ use chrono::prelude::*;
 use std::net::TcpStream;
 use std::{fs::File, io::Write, path::Path};
 
-use image::imageops::FilterType;
 use scap::frame::BGRAFrame;
 //use winapi::um::winioctl::Unknown;
 
-use std::io::{self};
+use std::io::{self, Error};
 
 use std::time::Duration;
 use std::thread::{self, JoinHandle};
 
 use image::{self, DynamicImage, GenericImageView, ImageBuffer, Rgba};
-extern crate winapi;
-use pixels::Error;
 
 use std::sync::{Arc, Mutex};
 
@@ -192,10 +189,27 @@ impl screen_state {
         *s=server;
     }
 
+    pub fn drop_server(&self){
+        let mut s= self.server.lock().unwrap();
+
+        if let Some(server) = s.take() {
+            drop(server);
+        }
+    }
+
     pub fn set_client(&self,client:Option<(TcpStream,Client)>){
         let mut c= self.client_stream.lock().unwrap();
 
         *c=client;
+    }
+
+    pub fn drop_client(&self){
+        let mut c= self.client_stream.lock().unwrap();
+
+        if let Some((stream,client)) = c.take() {
+            drop(stream);
+            drop(client);
+        }
     }
 
     pub fn set_line_ann(&self, pos: Vec<(f32, f32, f32, f32)>){
@@ -250,28 +264,35 @@ impl screen_state {
             text_annotation: text,
         };
         let res = server.send_to_all_clients(&screenshot_data);
-        println!("inviato: {:?}",res)
+        println!("inviato : {:?}",res)
         }
         Ok(())
 
     }
 
-    pub fn receive_from_server(&self)-> io::Result<Screenshot>{
+    pub fn receive_from_server(&self,state:Arc<screen_state>)-> io::Result<Screenshot>{
         let mut c = self.client_stream.lock().unwrap();
         
         println!("start");
         if let Some(( stream,client)) = c.as_mut(){
+            
             if client.is_connected(&stream) {
-                
-                if let Ok(screenshot) = client.receive_image_and_struct(stream){
+                println!("è connesso");
+                if let Ok(screenshot) = client.receive_image_and_struct(stream,state){
                     
-                    //if let State::Receiving = screenshot.state {
+                    println!("screen arrived");
                     
                     return Ok(screenshot);
-                    //}
-                };
+                    
+                }else{
+                    println!("not rec");
+                }
                 
             }
+            else{
+                println!("not conn");
+            }
+            
         }
         println!("error");
         
@@ -308,7 +329,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                 let recorder = setRecorder(0);
 
                 #[cfg(target_os = "windows")]
-                let recorder = setRecorder(monitor[n as usize]);
+                let recorder = setRecorder(monitor[n as usize].clone());
                 
                 #[cfg(target_os = "macos")]
                 let recorder = setRecorder(0);
@@ -366,7 +387,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             
                             let (width, height, mut encoded_frames, _encode_duration) = encode(&rgb_img);
                             
-                            for _ in 0..7{
+                            for _ in 0..20{
                                 let ip = state.get_ip_receiver();
                                 let _ = state.send_to_clients(encoded_frames.clone(),width, height,State::Blank);
                             }
@@ -385,7 +406,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                                 let ip = state.get_ip_receiver();
                                 let _ = state.send_to_clients(encoded_frames.clone(),width, height,State::Stop);
                             }
-                            state.set_server(None);
+                            state.set_frame(blanked_screen(2000, 1000));
 
                             break;
                         }
@@ -427,7 +448,6 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                     
                 }
                 println!("exit rec");
-                a.join().unwrap();
             }
             _ => {
                 println!("Invalid mode");
@@ -482,12 +502,9 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     break;
                 },
                 StreamingState::START =>{
-                    let ip = state.get_ip_sender();
-                    println!("enter");
-                    let new_screenshot = state.receive_from_server().unwrap();
-                    println!("after");
-
-                    println!("{:?}",new_screenshot.line_annotation);
+                    
+                    if let Ok(new_screenshot) = state.receive_from_server(Arc::clone(&state)){
+                        println!("After receive width: {:?}",new_screenshot.width);
                     if let Some(lines) = new_screenshot.line_annotation{
                         state.set_line_ann(lines);
                     }
@@ -510,7 +527,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     }
                     
                     let (_decode_duration, out_img) =decode(new_screenshot.data, new_screenshot.width, new_screenshot.height);
-                    
+                    println!("{:?}",out_img.dimensions());
                     if new_screenshot.state==State::Stop{
                         state.set_screen_state(StreamingState::STOP);
                         state.set_frame(blanked_screen(2000, 1000));
@@ -522,13 +539,17 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     *to_redraw = true;
             
                       
-                    
+                    }
+                    else{
+                        break;
+                    }
                 },
 
                 _ => {}
             };
                     
         }
+        println!("spawn screenshot thread ended");
     })
 }
 
