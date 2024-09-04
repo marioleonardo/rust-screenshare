@@ -226,12 +226,12 @@ impl MyApp{
     }
 
     fn start_cast_function(&mut self){
-        self.state.drop_server();
+        //self.state.drop_server();
         if !self.flag_thread{
             let my_local_ip = local_ip().unwrap();
             self.state.set_ip_rec(my_local_ip.to_string()+":7878");
 
-            let server = Server::new(my_local_ip.to_string()+":7878");
+            let mut server = Server::new(my_local_ip.to_string()+":7878");
             let state_clone1 = self.state.clone(); 
             let _ = server.bind_to_ip(state_clone1);
             
@@ -248,6 +248,7 @@ impl MyApp{
             }); 
         }
         else{
+            println!("errore 25");
             self.state.set_screen_state(StreamingState::START);
             self.state.cv.notify_all();
         }
@@ -606,6 +607,7 @@ impl eframe::App for MyApp {
                         let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
+                            self.state.set_kill_listener(true);
                             self.screenshot=None;
                             self.flag_thread=false;
                             self.current_page= Pages::HOME;

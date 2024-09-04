@@ -52,7 +52,7 @@ pub struct screen_state{
     pub line_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
     pub circle_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
     pub text_annotation: Arc<Mutex<Option<Vec<(f32, f32, String)>>>>,
-
+    pub listener: Arc<Mutex<bool>>
 }
 
 impl Default for screen_state{
@@ -73,8 +73,8 @@ impl Default for screen_state{
             n_monitor : Arc::new(Mutex::new(0)),
             line_annotation: Arc::new(Mutex::new(None)),
             circle_annotation : Arc::new(Mutex::new(None)),
-            text_annotation: Arc::new(Mutex::new(None))
-
+            text_annotation: Arc::new(Mutex::new(None)),
+            listener: Arc::new(Mutex::new(bool::default()))
          }
     }
 }
@@ -187,6 +187,18 @@ impl screen_state {
         let mut s= self.server.lock().unwrap();
 
         *s=server;
+    }
+
+    pub fn get_kill_listener(&self)->bool{
+        let s = self.listener.lock().unwrap();
+
+        return s.clone();
+    }
+
+    pub fn set_kill_listener(&self,flag:bool){
+        let mut s = self.listener.lock().unwrap();
+
+        *s=flag;
     }
 
     pub fn drop_server(&self){
@@ -348,11 +360,21 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                             let screenshot_framex = screenshot_frames.lock().unwrap();
                             let screenshot_frame = screenshot_framex.clone();
                             drop(screenshot_framex);
-                            
+                            println!("height: {:?}, width: {:?}", screenshot_frame.height,screenshot_frame.width);
                             let buffer_image= ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(screenshot_frame.width as u32, screenshot_frame.height as u32, screenshot_frame.data.clone()).unwrap();
-                            
+                            println!("dimensions cropped: {:?},{:?}", screenshot_frame.width as u32*state.get_f()/100, screenshot_frame.height as u32*state.get_f()/100);
+                            let mut crop_dim_w = match (screenshot_frame.width as u32*state.get_f()/100) %2{
+                                0=>{screenshot_frame.width as u32*state.get_f()/100},
+                                1=>{(screenshot_frame.width as u32*state.get_f()/100)+1},
+                                _=>{screenshot_frame.width as u32*state.get_f()/100}
+                            };
+                            let mut crop_dim_h = match (screenshot_frame.height as u32*state.get_f()/100) %2{
+                                0=>{screenshot_frame.height as u32*state.get_f()/100},
+                                1=>{(screenshot_frame.height as u32*state.get_f()/100)+1},
+                                _=>{screenshot_frame.height as u32*state.get_f()/100}
+                            };
                             //TODO: instead of cropping we should send variable image size and communicate the actual size with the struct sent, and then display a variable size image 
-                            let buffer_image= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), screenshot_frame.width as u32*state.get_f()/100, screenshot_frame.height as u32*state.get_f()/100).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
+                            let buffer_image: ImageBuffer<Rgba<u8>, Vec<u8>>= DynamicImage::ImageRgba8(buffer_image).crop_imm(state.get_x(), state.get_y(), crop_dim_w, crop_dim_h).into_rgba8();//.resize_exact(2000, 1000, FilterType::Lanczos3).into_rgba8();
                             let dim = buffer_image.dimensions();
                             //println!("{:?}",dim);
                             let rgb_img: ImageBuffer<image::Rgb<u8>, Vec<u8>> = convert_rgba_to_rgb(&buffer_image, dim.0, dim.1);
