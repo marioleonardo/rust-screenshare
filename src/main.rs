@@ -3,21 +3,12 @@
 
 mod screen;
 mod enums;
-use std::default;
-use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use std::{env, thread};
-use egui_dropdown::DropDownBox;
+use std::sync::Arc;
+use eframe::egui::Rounding;
 use screen::screen::loop_logic;
 use screen::screen::screen_state;
-use winit::monitor;
-//use winapi::shared::winerror::SEC_E_ONLY_HTTPS_ALLOWED;
-use std::mem::needs_drop;
 use local_ip_address::local_ip;
-use image::{ImageBuffer, Rgba};
-use eframe::egui::{self, Button, Color32, ColorImage, Key, KeyboardShortcut, ModifierNames, Modifiers, PointerButton, Pos2, Rect, TextBuffer};
-//use screen::screen;
+use eframe::egui::{self, Color32, ColorImage, KeyboardShortcut, ModifierNames, Modifiers, PointerButton, Pos2, Rect};
 use crate::enums::StreamingState;
 use screen::net::net::*;
 use screen::capture::capture::*;
@@ -28,7 +19,6 @@ enum CastRecEnum {
     Caster, 
     Receiver 
 }
-
 
 #[derive(Default)]
 enum Pages{
@@ -55,7 +45,6 @@ fn setup_custom_fonts(ctx: &egui::Context) {
 
     let mut style: egui::Style = (*ctx.style()).clone();
     style.text_styles.get_mut(&egui::TextStyle::Body).unwrap().size = 15.0; // Cambia la dimensione del font a 24
-    
     ctx.set_style(style);
 
     fonts.font_data.insert(
@@ -76,6 +65,7 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     // Tell egui to use these fonts:
     ctx.set_fonts(fonts);
 }
+
 
 fn main() -> eframe::Result<()> {
     
@@ -121,6 +111,7 @@ struct MyApp {
     drawings: Drawing,
     monitor_number: u8,
     img_rect: Option<Rect>,
+    annotation_color: Color32
 }
 
 impl MyApp{
@@ -185,12 +176,9 @@ impl MyApp{
                                 } 
                             },
                             Drawing::TEXT => {},
-                        }
-                           
-                    }
-                    
+                        } 
+                    }  
                 }
-    
             }   
         }); 
     }
@@ -211,9 +199,7 @@ impl MyApp{
                         let x2= (pos.x- min.x) / w ;
                         let y2 = (pos.y- min.y) / h ;
                         self.text_annotation.push(( Pos2{x:x2, y:y2},String::new()));
-                        
                     }
-    
                 };
                 if let egui::Event::Text(text)= event{
                     if let Some(last_ann) = self.text_annotation.last_mut() {
@@ -226,12 +212,11 @@ impl MyApp{
     }
 
     fn start_cast_function(&mut self){
-        //self.state.drop_server();
         if !self.flag_thread{
             let my_local_ip = local_ip().unwrap();
             self.state.set_ip_rec(my_local_ip.to_string()+":7878");
 
-            let mut server = Server::new(my_local_ip.to_string()+":7878");
+            let server = Server::new(my_local_ip.to_string()+":7878");
             let state_clone1 = self.state.clone(); 
             let _ = server.bind_to_ip(state_clone1);
             
@@ -248,7 +233,6 @@ impl MyApp{
             }); 
         }
         else{
-            println!("errore 25");
             self.state.set_screen_state(StreamingState::START);
             self.state.cv.notify_all();
         }
@@ -286,7 +270,7 @@ impl MyApp{
     }
     
     fn screenshot(&mut self)->ColorImage{
-        let mut st = self.state.clone();
+        let st = self.state.clone();
         
         let img = st.get_frame();
 
@@ -320,6 +304,8 @@ impl eframe::App for MyApp {
         setup_custom_fonts(&ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
+
+            if self.state.get_sc_state() == StreamingState::STOP {self.annotation_color=Color32::from_rgb(255, 0, 0)}
 
             let mut shapes:Vec<egui::Shape> = Vec::new();
     
@@ -364,78 +350,87 @@ impl eframe::App for MyApp {
                     });
                     
                     ui.horizontal(|ui|{
-                        let cast_button = egui::Button::new("Caster").min_size(egui::vec2(ui.available_width()/2.0, button_height/2.0));
+                        let cast_button = egui::Button::new("Caster").min_size(egui::vec2(ui.available_width()/2.0, button_height))
+                        .fill(if self.my_enum==CastRecEnum::Caster{Color32::from_rgb(255, 70, 70)} else {Color32::LIGHT_RED});
                         if ui.add(cast_button).clicked(){
                             self.my_enum=CastRecEnum::Caster;
                         };
 
-                        let rec_button = egui::Button::new("Receiver").min_size(egui::vec2(ui.available_width(), button_height/2.0));
+                        let rec_button = egui::Button::new("Receiver").min_size(egui::vec2(ui.available_width(), button_height))
+                        .fill(if self.my_enum==CastRecEnum::Receiver{Color32::from_rgb(70, 70, 255)} else {Color32::LIGHT_BLUE});
                         if ui.add(rec_button).clicked(){
                             self.my_enum=CastRecEnum::Receiver;
                         };
                     });
 
-                    ui.add_space(30.0);
+                    ui.add_space(40.0);
 
-                    ui.horizontal(|ui|{
-                        match self.my_enum{
-                            CastRecEnum::Caster => {
-                                ui.horizontal(|ui|{
-                                    ui.label("Indice monitor:");
+                    
+                    match self.my_enum{
+                        CastRecEnum::Caster => {
+                            ui.horizontal(|ui|{
+                                ui.add_space(ui.available_width()/4.0);
+                                ui.label("Indice monitor:");
+                                let monitor= getMonitors();
+                                egui::ComboBox::from_label("")
+                                .selected_text(format!("{}", self.monitor_number))
+                                .show_ui(ui, |ui| {
+                                    for num in 0..monitor.len() as u8 {
+                                        ui.selectable_value(&mut self.monitor_number, num, format!("{num}"));
+                                    }
+                                });
 
-                                    let monitor= getMonitors();
+                                self.state.set_n_monitor(self.monitor_number.clone());
+
+                            });
+                            ui.add_space(50.0);
+                            ui.horizontal(|ui|{
+                                ui.add_space(ui.available_width()/3.0);
+                                ui.horizontal( |ui|{
+                                    let main_button = egui::Button::new("Condividi schermo").min_size(egui::vec2(ui.available_width()/2.0, button_height)).fill(Color32::from_rgb(255, 70, 70));
+                                    if ui.add(main_button).clicked(){
+                                        self.current_page = Pages::CASTER; 
+                                    };
+                                });
+                            });
                             
-                                    egui::ComboBox::from_label("")
-                                    .selected_text(format!("{}", self.monitor_number))
-                                    .show_ui(ui, |ui| {
-                                        for num in 0..monitor.len() as u8 {
-                                            ui.selectable_value(&mut self.monitor_number, num, format!("{num}"));
-                                        }
-                                    });
-
-                                    self.state.set_n_monitor(self.monitor_number.clone());
-
+                        },
+                        CastRecEnum::Receiver => {
+                            ui.horizontal(|ui| {
+                                ui.add_space(ui.available_width()/4.0);
+                                ui.label("IP Server:");
+                                ui.text_edit_singleline(&mut self.server_address);
+                                
+                            });
+                            ui.add_space(50.0);
+                            ui.horizontal(|ui|{
+                                ui.add_space(ui.available_width()/3.0);
+                                ui.horizontal( |ui|{
+                                    let main_button = egui::Button::new("Visualizza straming").min_size(egui::vec2(ui.available_width()/2.0, button_height)).fill(Color32::from_rgb(70, 70, 255));
+                                    if ui.add(main_button).clicked(){
+                                        self.start_rec_function();
+                                    };
                                 });
-
-                                let main_button = egui::Button::new("Condividi schermo").min_size(egui::vec2(ui.available_width(), button_height/2.0));
-                                if ui.add(main_button).clicked(){
-                                    self.current_page = Pages::CASTER; 
-                                };
-                            },
-                            CastRecEnum::Receiver => {
-                                ui.horizontal(|ui| {
-    
-                                    ui.label("IP Server:");
-                                    //if self.server_address==""{self.server_address="192.168.88.107:7878".to_string()};
-                                    
-                                    ui.text_edit_singleline(&mut self.server_address);
-
-                                    
-                                });
-                                let main_button = egui::Button::new("Visualizza straming").min_size(egui::vec2(ui.available_width(), button_height/2.0));
-                                if ui.add(main_button).clicked(){
-                                    self.start_rec_function();
-                                };
-                            },
-                        }
-    
-                    });
+                            });
+                        },
+                    }
 
                     let color = match self.my_enum {
                         CastRecEnum::Caster => egui::Color32::RED,
-                        CastRecEnum::Receiver => egui::Color32::GREEN,
+                        CastRecEnum::Receiver => egui::Color32::BLUE,
                     };
                     ui.add_space(10.0);
 
-                    ui.label(egui::RichText::new(format!("{:?} è selezionato", self.my_enum)).color(color));
+                    ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui|{
+                        ui.label(egui::RichText::new(format!("Modalità {:?} selezionata", self.my_enum)).color(color));
+                    });
 
-            
                 },
                 Pages::RECEIVER=>{
 
                     ui.horizontal(|ui|{
                         
-                        let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
+                        let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height)).fill(Color32::LIGHT_RED);
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.screenshot=None;
@@ -587,24 +582,28 @@ impl eframe::App for MyApp {
                             StreamingState::PAUSE => "Resume Streming",
                             StreamingState::BLANK => "Resume Streaming",
                             StreamingState::STOP => "Start Streaming",
-                        }).min_size(egui::vec2(button_width, button_height));
+                        }).min_size(egui::vec2(button_width, button_height))
+                        .fill(if self.state.get_sc_state()==StreamingState::START{Color32::LIGHT_GREEN} else {Color32::GRAY});
                         if ui.add(start_button).clicked() {
                             self.start_cast_function();
                         }
                         
-                        let pause_button= egui::Button::new("Pause Streaming").min_size(egui::vec2(button_width, button_height));
+                        let pause_button= egui::Button::new("Pause Streaming").min_size(egui::vec2(button_width, button_height))
+                        .fill(if self.state.get_sc_state()==StreamingState::PAUSE{Color32::from_rgb(100,100,255)} else {Color32::GRAY});
                         if ui.add(pause_button).clicked() {
                             self.state.set_screen_state(StreamingState::PAUSE);
                             self.state.cv.notify_all();
                         }
         
-                        let blank_button = egui::Button::new("Blank Streaming").min_size(egui::vec2(button_width,button_height));
+                        let blank_button = egui::Button::new("Blank Streaming").min_size(egui::vec2(button_width,button_height))
+                        .fill(if self.state.get_sc_state()==StreamingState::BLANK{Color32::WHITE} else {Color32::GRAY});
                         if ui.add(blank_button).clicked() {
                             self.state.set_screen_state(StreamingState::BLANK);
                             self.state.cv.notify_all();
                         }
         
-                        let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height));
+                        let stop_button = egui::Button::new("Stop Streaming").min_size(egui::vec2(button_width,button_height)).rounding(Rounding::ZERO)
+                        .fill(Color32::LIGHT_RED);
                         if ui.add(stop_button).clicked() {
                             self.state.set_screen_state(StreamingState::STOP);
                             self.state.set_kill_listener(true);
@@ -744,7 +743,7 @@ impl eframe::App for MyApp {
                                 let y2= end.y*h + min.y;
                                 shapes.push(egui::Shape::line_segment(
                                 [ Pos2{x:x1, y:y1}, Pos2{x:x2, y:y2}],
-                                egui::Stroke::new(2.0, Color32::RED),
+                                egui::Stroke::new(2.0, self.annotation_color.clone()),
                             ));
                             }
 
@@ -757,14 +756,14 @@ impl eframe::App for MyApp {
                                 shapes.push(egui::Shape::circle_stroke(
                                     Pos2{x:x1, y:y1}, 
                                     ((x1-x2).powi(2)+(y1-y2).powi(2)).sqrt(),
-                                    egui::Stroke::new(2.0, Color32::RED)));
+                                    egui::Stroke::new(2.0, self.annotation_color)));
                                 }
 
                             for (start, text) in &mut self.text_annotation {
                                 let x1= start.x*w +min.x;
                                 let y1= start.y*h +min.y;
                                 ui.fonts(|f|{
-                                    let t = egui::Shape::text(f, Pos2{x:x1, y:y1}, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), Color32::RED);
+                                    let t = egui::Shape::text(f, Pos2{x:x1, y:y1}, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), self.annotation_color);
                                     shapes.push(t);
                                 });
                                 
@@ -781,11 +780,15 @@ impl eframe::App for MyApp {
                                 });
 
                                 ui.add_space(10.0);
+                                ui.horizontal(|ui|{
+                                    ui.color_edit_button_srgba(&mut self.annotation_color);
+                                });
+                                ui.add_space(10.0);
 
                                 ui.horizontal(|ui|{
                                     let draw_line_button = egui::Button::new("Line").min_size(ui.available_size()).fill(
                                         if self.drawings==Drawing::LINE{
-                                            Color32::GREEN
+                                            Color32::LIGHT_GREEN
                                         }
                                         else{
                                             Color32::GRAY
@@ -805,7 +808,7 @@ impl eframe::App for MyApp {
                                 ui.horizontal(|ui|{
                                     let draw_circle_button = egui::Button::new("Circle").min_size(ui.available_size()).fill(
                                         if self.drawings==Drawing::CIRCLE{
-                                            Color32::GREEN
+                                            Color32::LIGHT_GREEN
                                         }
                                         else{
                                             Color32::GRAY
@@ -826,7 +829,7 @@ impl eframe::App for MyApp {
                                 ui.horizontal(|ui|{
                                     let draw_text_button = egui::Button::new("Text").min_size(ui.available_size()).fill(
                                         if self.drawings==Drawing::TEXT{
-                                            Color32::GREEN
+                                            Color32::LIGHT_GREEN
                                         }
                                         else{
                                             Color32::GRAY
@@ -846,7 +849,7 @@ impl eframe::App for MyApp {
                                 ui.add_space(10.0);
 
                                 ui.horizontal(|ui|{
-                                    let clear_button = egui::Button::new("Clear All").min_size(ui.available_size()).fill(Color32::GRAY);
+                                    let clear_button = egui::Button::new("Clear All").min_size(ui.available_size()).fill(Color32::LIGHT_RED);
                                     if ui.add(clear_button).clicked(){
                                         self.line_annotations.clear();
                                         self.circle_annotations.clear();
@@ -946,8 +949,10 @@ impl eframe::App for MyApp {
                         
                         ui.horizontal(|ui|{
                             //Visualize shortcut buttons
-                            let add_close_butt= egui::Button::new(if self.insert_shortcut_start{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
+                            let add_close_butt= egui::Button::new(if self.insert_shortcut_start{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_start{Color32::LIGHT_GREEN} else {Color32::GRAY});
+                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_start{Color32::LIGHT_RED} else {Color32::GRAY});
                             ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_pause && !self.insert_shortcut_stop{
                                 self.insert_shortcut_start=!self.insert_shortcut_start;
@@ -979,8 +984,10 @@ impl eframe::App for MyApp {
 
                         ui.horizontal(|ui|{
                             //Visualize shortcut buttons
-                            let add_close_butt= egui::Button::new(if self.insert_shortcut_pause{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
+                            let add_close_butt= egui::Button::new(if self.insert_shortcut_pause{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_pause{Color32::LIGHT_GREEN} else {Color32::GRAY});
+                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_pause{Color32::LIGHT_RED} else {Color32::GRAY});
                             ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_start && !self.insert_shortcut_stop{
                                 self.insert_shortcut_pause=!self.insert_shortcut_pause;
@@ -1012,8 +1019,10 @@ impl eframe::App for MyApp {
                         
                         ui.horizontal(|ui|{
                             //Visualize shortcut buttons
-                            let add_close_butt= egui::Button::new(if self.insert_shortcut_blank{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
+                            let add_close_butt= egui::Button::new(if self.insert_shortcut_blank{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_blank{Color32::LIGHT_GREEN} else {Color32::GRAY});
+                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_blank{Color32::LIGHT_RED} else {Color32::GRAY});
                             ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_start && !self.insert_shortcut_pause && !self.insert_shortcut_stop{
                                 self.insert_shortcut_blank=!self.insert_shortcut_blank;
@@ -1045,8 +1054,10 @@ impl eframe::App for MyApp {
                         
                         ui.horizontal(|ui|{
                             //Visualize shortcut buttons
-                            let add_close_butt= egui::Button::new(if self.insert_shortcut_stop{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0));
-                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0));
+                            let add_close_butt= egui::Button::new(if self.insert_shortcut_stop{"End"} else {"Add"}).min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_stop{Color32::LIGHT_GREEN} else {Color32::GRAY});
+                            let clear_butt= egui::Button::new("Clear").min_size(egui::vec2(button_width/2.0,button_height/2.0))
+                            .fill(if self.insert_shortcut_stop{Color32::LIGHT_RED} else {Color32::GRAY});
                             ui.add_space(30.0);
                             if ui.add(add_close_butt).clicked() && !self.insert_shortcut_blank && !self.insert_shortcut_pause && !self.insert_shortcut_start{
                                 self.insert_shortcut_stop=!self.insert_shortcut_stop;
@@ -1077,7 +1088,6 @@ impl eframe::App for MyApp {
                         
                     });        
                     
-
                     ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::BottomUp), |ui|{
                         if self.insert_shortcut_start || self.insert_shortcut_pause || self.insert_shortcut_blank || self.insert_shortcut_stop{
                             ui.label("Press the shortcut");

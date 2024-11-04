@@ -178,9 +178,14 @@ pub mod net {
                 let mut is_valid = true;
                 for chunk in serialized_data.as_ref().unwrap().chunks(CHUNK_SIZE) {
                    
-                    if stream.write_all(chunk).is_err() {
-                        is_valid = false;
-                        break;
+                    match stream.write_all(chunk) {
+                        Ok(T) =>{},
+                        Err(e) =>  {
+                            println!("{:?}",e);
+                            is_valid = false;
+                            break;
+                        }
+                        
                     }
                 }
                 if is_valid {
@@ -233,39 +238,60 @@ pub mod net {
             stream.peer_addr().is_ok()
         }
 
-        pub fn receive_image_and_struct(&self, stream: &mut TcpStream,state:Arc<screen_state>) -> io::Result<Screenshot> {
+        pub fn receive_image_and_struct(&self, stream: &mut TcpStream, state: Arc<screen_state>) -> io::Result<Screenshot> {
             const STOP_MESSAGE: &[u8] = b"STOP";
             let mut buffer = vec![0; CHUNK_SIZE];
             let mut data = Vec::new();
+            
+            // Set a read timeout of 50 milliseconds
+            stream.set_read_timeout(Some(Duration::from_millis(150)))?;
+            
             loop {
-                if state.get_sc_state()==StreamingState::STOP{
+                if state.get_sc_state() == StreamingState::STOP {
                     break;
                 }
-                if let Ok(bytes_read) = stream.read(&mut buffer){
-                    if bytes_read == 0 {
-                        break;
-                    }
-                    if buffer[..bytes_read].ends_with(STOP_MESSAGE) {
-                        data.extend_from_slice(&buffer[..bytes_read - STOP_MESSAGE.len()]);
-                        break;
-                    } else {
-                        data.extend_from_slice(&buffer[..bytes_read]);
-                    }
-                }
-                else{
-                    println!("not read");
-                }
                 
-            }
-            if let Ok(screenshot) = bincode::deserialize::<Screenshot>(&data){
-                println!("{:?}",screenshot.width);
-                Ok(screenshot)
-            }
-            else{
-                Err(Error::last_os_error())
+                match stream.read(&mut buffer) {
+                    Ok(bytes_read) => {
+                        if bytes_read == 0 {
+                            println!("zero bytes read");
+                            break;
+                        }
+                        if buffer[..bytes_read].ends_with(STOP_MESSAGE) {
+                            println!("stop message bytes read");
+                            data.extend_from_slice(&buffer[..bytes_read - STOP_MESSAGE.len()]);
+                            break;
+                        } else {
+                            println!("bytes read");
+                            data.extend_from_slice(&buffer[..bytes_read]);
+                        }
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
+                        println!("error kind: {:?}_ {:?}", e,e.kind());
+                        // buffer.clear();
+                        // data.clear();
+                        println!("Read timed out or non-blocking error occurred, retrying...");
+                        continue;
+                    }
+                    Err(e) => {
+                        // Handle other types of errors
+                        println!("not read");
+                        return Err(e);
+                    }
+                }
             }
             
-            
+            // Attempt to deserialize the data into a Screenshot
+            match bincode::deserialize::<Screenshot>(&data) {
+                Ok(screenshot) => {
+                    println!("{:?}", screenshot.width);
+                    Ok(screenshot)
+                }
+                Err(e) => {
+                    println!("screenshot error");
+                    Err(Error::last_os_error())
+                },
+            }
         }
     }
 }
