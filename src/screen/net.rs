@@ -48,65 +48,6 @@ pub mod net {
                 clients: Arc::new(Mutex::new(HashMap::new())),
             }
         }
-        // pub fn bind_to_ip(&self, state: Arc<screen_state>) -> io::Result<()> {
-        //     let listener = TcpListener::bind(&self.ipaddress)?;
-        //     let clients = self.clients.clone();
-        //     let state_clone = state.clone();
-        
-        //     // Spawning the listener thread
-        //     let listener_thread = thread::spawn(move || {
-        //         println!("Listener created {:?}", listener.local_addr());
-        
-        //         // Set the listener to non-blocking mode to allow for checking the kill signal
-        //         listener.set_nonblocking(true)?;
-        
-        //         loop {
-        //             if state_clone.get_kill_listener() {
-        //                 println!("Listener shutting down");
-        //                 break;
-        //             }
-        
-        //             match listener.accept() {
-        //                 Ok((mut stream, client_address)) => {
-        //                     println!("New client connected: {}", client_address);
-        //                     clients.lock().unwrap().insert(client_address, stream.try_clone().unwrap());
-        //                     let clients_clone = clients.clone();
-        //                     let state_clone = state_clone.clone();
-        
-        //                     // Spawning a thread to handle the client connection
-        //                     thread::spawn(move || {
-        //                         let mut buffer = [0; 512];
-        //                         while !state_clone.get_kill_listener() {
-        //                             match stream.read(&mut buffer) {
-        //                                 Ok(size) if size > 0 => {
-        //                                     // Process data...
-        //                                 },
-        //                                 Ok(_) | Err(_) => break, // Client disconnected or error occurred
-        //                             }
-        //                         }
-        //                         println!("Client disconnected: {}", client_address);
-        //                         clients_clone.lock().unwrap().remove(&client_address);
-        //                         let _ = stream.shutdown(Shutdown::Both);
-        //                     });
-        //                 }
-        //                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-        //                     // No incoming connection, continue the loop
-        //                     thread::sleep(std::time::Duration::from_millis(100));
-        //                 }
-        //                 Err(e) => {
-        //                     println!("Connection failed: {}", e);
-        //                 }
-        //             }
-        //         }
-        
-        //         drop(listener); // Explicitly drop the listener
-        //         Ok::<(), io::Error>(())
-        //     });
-            
-        //     listener_thread.join();
-        //     println!("bind to ip dead");
-        //     Ok(())
-        // }
         pub fn bind_to_ip(&self, state: Arc<screen_state>) -> io::Result<()> {
             let listener = TcpListener::bind(&self.ipaddress)?;
 
@@ -130,24 +71,31 @@ pub mod net {
                             println!("New client connected: {}", client_address);
                             clients.lock().unwrap().insert(client_address, stream.try_clone().unwrap());
                             let clients_clone = clients.clone();
-
+                            print!("stream created");
                             thread::spawn(move || {
                                 let mut buffer = [0; 512];
                                 loop {
                                     match stream.read(&mut buffer) {
                                         Ok(size) if size > 0 => {
+                                            print!("s");
                                             // Process the data received (you can add your own processing logic here)
                                             println!("Received data from {}: {:?}", client_address, &buffer[..size]);
                                         }
                                         Ok(_) => {
+                                            print!("2");
+
                                             // No data received, just continue the loop
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
                                         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                            print!("3");
+                                            
                                             // No data available right now, yield to other threads
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
                                         Err(_) => {
+                                            print!("s2");
+
                                             // An error occurred, assume the client has disconnected
                                             println!("Client disconnected: {}", client_address);
                                             clients_clone.lock().unwrap().remove(&client_address);
@@ -244,12 +192,15 @@ pub mod net {
             let mut data = Vec::new();
             
             // Set a read timeout of 50 milliseconds
-            stream.set_read_timeout(Some(Duration::from_millis(150)))?;
+            stream.set_read_timeout(Some(Duration::from_millis(1500)))?;
             
             loop {
-                if state.get_sc_state() == StreamingState::STOP {
-                    break;
-                }
+
+                //rimettere
+                // if state.get_sc_state() == StreamingState::STOP {
+                //     print!("stop");
+                //     break;
+                // }
                 
                 match stream.read(&mut buffer) {
                     Ok(bytes_read) => {
@@ -289,6 +240,7 @@ pub mod net {
                 }
                 Err(e) => {
                     println!("screenshot error");
+                    print!("{:?}", data);
                     Err(Error::last_os_error())
                 },
             }
