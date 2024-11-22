@@ -6,6 +6,7 @@ mod videowriter;
 pub mod screen{
 
 use chrono::prelude::*;
+use env_logger::fmt::Color;
 use std::net::TcpStream;
 use scap::frame::BGRAFrame;
 use std::io::{self, Error};
@@ -41,6 +42,7 @@ pub struct screen_state{
     pub line_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
     pub circle_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
     pub text_annotation: Arc<Mutex<Option<Vec<(f32, f32, String)>>>>,
+    pub color_ann: Arc<Mutex<Option<[u8; 4]>>>,
     pub listener: Arc<Mutex<bool>>
 }
 
@@ -63,7 +65,9 @@ impl Default for screen_state{
             line_annotation: Arc::new(Mutex::new(None)),
             circle_annotation : Arc::new(Mutex::new(None)),
             text_annotation: Arc::new(Mutex::new(None)),
+            color_ann: Arc::new(Mutex::new(None)),
             listener: Arc::new(Mutex::new(bool::default()))
+
          }
     }
 }
@@ -229,11 +233,24 @@ impl screen_state {
         a.clone()
     }
 
+    pub fn set_color_ann(&self, pos: [u8; 4]){
+        let mut a = self.color_ann.lock().unwrap();
+
+        *a = Some(pos);
+    }
+
+    pub fn get_color_ann(&self)->Option<[u8; 4]>{
+        let a = self.color_ann.lock().unwrap();
+
+        a.clone()
+    }
+
     pub fn send_to_clients(&self,v:Vec<u8>,w:u32,h:u32,state:State)->Result<(()),Error>{
         let s = self.server.lock().unwrap();
         let lines = self.get_line_ann();
         let circles = self.get_circle_ann();
         let text = self.get_text_ann();
+        let color = self.get_color_ann();
         if let Some(server) =s.as_ref(){
         let screenshot_data = Screenshot {
             data: v,
@@ -243,6 +260,7 @@ impl screen_state {
             line_annotation: lines,
             circle_annotation: circles,
             text_annotation: text,
+            color,
         };
         let res = server.send_to_all_clients(&screenshot_data);
         println!("inviato : {:?}",res)
@@ -498,6 +516,9 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     }
                     if let Some(text) = new_screenshot.text_annotation{
                         state.set_text_ann(text);
+                    }
+                    if let Some(color) = new_screenshot.color{
+                        state.set_color_ann(color);
                     }
                     
                     if let Some(recording) = state.get_rec() {
