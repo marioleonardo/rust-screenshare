@@ -43,7 +43,8 @@ pub struct screen_state{
     pub circle_annotation: Arc<Mutex<Option<Vec<(f32, f32, f32, f32)>>>>,
     pub text_annotation: Arc<Mutex<Option<Vec<(f32, f32, String)>>>>,
     pub color_ann: Arc<Mutex<Option<[u8; 4]>>>,
-    pub listener: Arc<Mutex<bool>>
+    pub listener: Arc<Mutex<bool>>,
+    pub reconnect: Arc<Mutex<bool>>
 }
 
 impl Default for screen_state{
@@ -66,8 +67,8 @@ impl Default for screen_state{
             circle_annotation : Arc::new(Mutex::new(None)),
             text_annotation: Arc::new(Mutex::new(None)),
             color_ann: Arc::new(Mutex::new(None)),
-            listener: Arc::new(Mutex::new(bool::default()))
-
+            listener: Arc::new(Mutex::new(bool::default())),
+            reconnect: Arc::new(Mutex::new(false))
          }
     }
 }
@@ -103,6 +104,18 @@ impl screen_state {
         let mut a = self.to_redraw.lock().unwrap();
         *a=true;
         *f=frame;
+    }
+
+    pub fn get_reconnect(&self)->bool{
+        let r = self.reconnect.lock().unwrap();
+
+        r.clone()
+    }
+    
+    pub fn set_reconnect(&self, flag:bool){
+        let mut r = self.reconnect.lock().unwrap();
+
+        *r=flag;
     }
 
     pub fn set_screen_state(&self,sc:StreamingState){
@@ -518,16 +531,18 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     break;
                 },
                 StreamingState::START =>{
-                    if error_m {
-
+                    if error_m && state.get_reconnect(){
+                        println!("Reconnection");
                         let client = Client::new(state.get_ip_send().clone(), state.get_ip_send().clone());
                         if let Ok(stream) = client.connect_to_ip() {
+                            println!("riconnection done");
                             state.set_client(Some((stream, client)));
                             error_m = false;
+                            state.set_reconnect(true);
                         }
-                        
                     }
                     if let Ok(new_screenshot) = state.receive_from_server(Arc::clone(&state)){
+
 
                         println!("After receive width: {:?}",new_screenshot.width);
                     if let Some(lines) = new_screenshot.line_annotation{
