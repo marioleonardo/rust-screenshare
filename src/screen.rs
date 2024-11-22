@@ -519,7 +519,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
         // Format the time as a human-readable string
         let formatted_time = now.format("video_%Y_%m_%d__%H_%M_%S.h264").to_string();
         let mut video_writer = VideoWriter::new(100, formatted_time);
-        let mut error_m=true;
+        let mut error_m=false;
         loop { 
 
             match state.get_sc_state(){
