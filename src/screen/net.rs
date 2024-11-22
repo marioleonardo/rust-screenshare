@@ -215,7 +215,7 @@ pub mod net {
                         // data.clear();
                         println!("Read timed out or non-blocking error occurred, retrying...");
                         state.set_reconnect(true);
-                        continue;
+                        break;
                     }
                     Err(e) => {
                         // Handle other types of errors

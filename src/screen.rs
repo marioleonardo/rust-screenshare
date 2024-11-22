@@ -530,7 +530,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     state.set_frame(blanked_screen(2000, 1000));
                     break;
                 },
-                StreamingState::START =>{/* 
+                StreamingState::START =>{
                     if error_m && state.get_reconnect(){
                         println!("Reconnection");
                         let client = Client::new(state.get_ip_send().clone(), state.get_ip_send().clone());
@@ -540,7 +540,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                             error_m = false;
                             state.set_reconnect(false);
                         }
-                    }*/
+                    }
                     if let Ok(new_screenshot) = state.receive_from_server(Arc::clone(&state)){
 
 
