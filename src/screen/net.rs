@@ -237,7 +237,7 @@ pub mod net {
                             || e.kind() == io::ErrorKind::TimedOut =>
                     {
                         println!("Timeout or no data available, retrying...");
-                        continue;
+                        break;
                     }
                     Err(e) => {
                         println!("Error: {}. Attempting reconnection...", e);

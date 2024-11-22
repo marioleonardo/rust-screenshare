@@ -120,6 +120,18 @@ impl screen_state {
         *f=ip;
     }
 
+    pub fn get_ip_rec(&self)->String{
+        let  f=self.ip_receiver.lock().unwrap();
+
+        return f.clone();
+    }
+
+    pub fn get_ip_send(&self)->String{
+        let  f=self.ip_sender.lock().unwrap();
+
+        return f.clone();
+    }
+
     pub fn get_x(&self)->u32{
         let x = self.x.lock().unwrap();
 
@@ -494,8 +506,9 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
         // Format the time as a human-readable string
         let formatted_time = now.format("video_%Y_%m_%d__%H_%M_%S.h264").to_string();
         let mut video_writer = VideoWriter::new(100, formatted_time);
-        
+        let mut error_m=true;
         loop { 
+
             match state.get_sc_state(){
                 StreamingState::STOP => {
                     if let Some(recording) = state.get_rec() {
@@ -505,8 +518,17 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     break;
                 },
                 StreamingState::START =>{
-                    
+                    if error_m {
+
+                        let client = Client::new(state.get_ip_send().clone(), state.get_ip_send().clone());
+                        if let Ok(stream) = client.connect_to_ip() {
+                            state.set_client(Some((stream, client)));
+                            error_m = false;
+                        }
+                        
+                    }
                     if let Ok(new_screenshot) = state.receive_from_server(Arc::clone(&state)){
+
                         println!("After receive width: {:?}",new_screenshot.width);
                     if let Some(lines) = new_screenshot.line_annotation{
                         state.set_line_ann(lines);
@@ -545,7 +567,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                     *to_redraw = true;      
                     }
                     else{
-                        break;
+                        error_m = true;
                     }
                 },
 
