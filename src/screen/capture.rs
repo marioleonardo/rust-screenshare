@@ -4,7 +4,7 @@ pub mod capture{
         capturer::{Area, Capturer, Options, Point, Size},
         frame::{BGRAFrame, Frame, FrameType}, Target,
     };
-    use std::{sync::{Arc, Mutex}};
+    use std::sync::{Arc, Mutex};
 
     use crate::{enums::StreamingState, screen::screen::screen_state};
     
@@ -115,7 +115,7 @@ pub mod capture{
             frames.clear();
             
             for i in 0..20 {
-                let mut frame = recorder.get_next_frame().expect("Error");
+                let frame = recorder.get_next_frame().expect("Error");
     
                 match frame {
                     Frame::YUVFrame(frame) => {
@@ -150,7 +150,7 @@ pub mod capture{
                             frame.width, frame.height
                         );
                     }
-                    Frame::BGRx(mut frame) => {
+                    Frame::BGRx(frame) => {
                         println!(
                             "Recieved BGRx frame of width {} and height {}",
                             frame.width, frame.height
