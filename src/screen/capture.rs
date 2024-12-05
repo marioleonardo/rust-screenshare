@@ -1,14 +1,14 @@
 pub mod capture{
     
     use scap::{
-        capturer::{Area, Capturer, Options, Point, Size},
+        capturer::{Capturer, Options},
         frame::{BGRAFrame, Frame, FrameType}, Target,
     };
     use std::sync::{Arc, Mutex};
 
-    use crate::{enums::StreamingState, screen::screen::screen_state};
+    use crate::{enums::StreamingState, screen::screen::ScreenState};
     
-    pub fn getMonitors()-> Vec<Target>{
+    pub fn get_monitors()-> Vec<Target>{
         let targets = scap::get_all_targets();
 
 
@@ -52,7 +52,7 @@ pub mod capture{
     }
 
     #[cfg(target_os = "windows")]
-    pub fn setRecorder(target:Target) -> Capturer{
+    pub fn set_recorder(target:Target) -> Capturer{
 
         let targets = scap::get_all_targets();
         println!("🎯 Targets: {:?}", targets);
@@ -106,7 +106,7 @@ pub mod capture{
     
         recorder
     }
-    pub fn loopRecorder( mut recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>, state: Arc<screen_state>){
+    pub fn loop_recorder( mut recorder : Capturer, screenshot_clone: Arc<Mutex<BGRAFrame>>, state: Arc<ScreenState>){
     
         let mut fps_counter = 0;
         let mut last_fps_time = std::time::Instant::now();
@@ -194,10 +194,10 @@ pub mod capture{
                             
                             },
                             StreamingState::PAUSE => {
-                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                                let _unused =state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
                             },
                             StreamingState::BLANK => {
-                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                                let _unused = state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
                             },
                             StreamingState::STOP => {}
                         }
@@ -224,10 +224,10 @@ pub mod capture{
                             
                             },
                             StreamingState::PAUSE => {
-                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                                let _unused = state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
                             },
                             StreamingState::BLANK => {
-                                state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
+                                let _unused = state.cv.wait_while(state.stream_state.lock().unwrap(), |s| *s!=StreamingState::START);
                             },
                             StreamingState::STOP => {}
                         }

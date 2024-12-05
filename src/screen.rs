@@ -6,7 +6,6 @@ mod videowriter;
 pub mod screen{
 
 use chrono::prelude::*;
-use env_logger::fmt::Color;
 use std::net::TcpStream;
 use scap::frame::BGRAFrame;
 use std::io::{self, Error};
@@ -15,9 +14,9 @@ use std::thread::{self, JoinHandle};
 use image::{self, DynamicImage, ImageBuffer, Rgba};
 use std::sync::{Arc, Mutex};
 use crate::enums::StreamingState;
-use crate::screen::capture::capture::getMonitors;
+use crate::screen::capture::capture::get_monitors;
 use super::net::net::*;
-use super::capture::capture::{loopRecorder,setRecorder};
+use super::capture::capture::{loop_recorder,set_recorder};
 use super::decoder::decoder::decode;
 use super::encoder::encoder::encode;
 use super::videowriter::VideoWriter;
@@ -25,7 +24,7 @@ const WIDTH: u32 = 2000;
 const HEIGHT: u32 = 1000;
 
 
-pub struct screen_state{
+pub struct ScreenState{
     pub stream_state : Arc<Mutex<StreamingState>>,
     frame : Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>,
     to_redraw: Arc<Mutex<bool>>,
@@ -47,7 +46,7 @@ pub struct screen_state{
     pub reconnect: Arc<Mutex<bool>>
 }
 
-impl Default for screen_state{
+impl Default for ScreenState{
     fn default() -> Self {
         Self { 
             cv: std::sync::Condvar::default(),
@@ -73,7 +72,7 @@ impl Default for screen_state{
     }
 }
 
-impl screen_state {
+impl ScreenState {
     pub fn get_frame(&self)->ImageBuffer<Rgba<u8>, Vec<u8>>{
         let f = self.frame.lock().unwrap();
         
@@ -131,12 +130,6 @@ impl screen_state {
     pub fn set_ip_send(&self,ip:String){
         let mut f=self.ip_sender.lock().unwrap();
         *f=ip;
-    }
-
-    pub fn get_ip_rec(&self)->String{
-        let  f=self.ip_receiver.lock().unwrap();
-
-        return f.clone();
     }
 
     pub fn get_ip_send(&self)->String{
@@ -270,7 +263,7 @@ impl screen_state {
         a.clone()
     }
 
-    pub fn send_to_clients(&self,v:Vec<u8>,w:u32,h:u32,state:State)->Result<(()),Error>{
+    pub fn send_to_clients(&self,v:Vec<u8>,w:u32,h:u32,state:State)->Result<(),Error>{
         let s = self.server.lock().unwrap();
         let lines = self.get_line_ann();
         let circles = self.get_circle_ann();
@@ -294,7 +287,7 @@ impl screen_state {
 
     }
 
-    pub fn receive_from_server(&self,state:Arc<screen_state>)-> io::Result<Screenshot>{
+    pub fn receive_from_server(&self,state:Arc<ScreenState>)-> io::Result<Screenshot>{
         let mut c = self.client_stream.lock().unwrap();
         
         println!("start");
@@ -338,7 +331,7 @@ fn blanked_screen(width:u32, height:u32)->ImageBuffer<Rgba<u8>, Vec<u8>>{
     return img 
 }
 
-pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
+pub fn loop_logic(args:String,state:Arc<ScreenState>) -> Result<(),  Error> {
     
     if args.len() > 1 {
         match args.as_str() {
@@ -347,16 +340,16 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
             
                 let screenshot_frames: Arc<Mutex<BGRAFrame>> = Arc::new(Mutex::new(BGRAFrame{width: 0, display_time:0, height: 0, data: vec![]}));
                 let screenshot_frames_clone = screenshot_frames.clone();
-                let monitor = getMonitors();
+                let monitor = get_monitors();
                 let n = state.get_n_monitor();
                 #[cfg(target_os = "linux")]
-                let recorder = setRecorder(0);
+                let recorder = set_recorder(0);
 
                 #[cfg(target_os = "windows")]
-                let recorder = setRecorder(monitor[n as usize].clone());
+                let recorder = set_recorder(monitor[n as usize].clone());
                 
                 #[cfg(target_os = "macos")]
-                let recorder = setRecorder(0);
+                let recorder = set_recorder(0);
 
                 let state_clone = state.clone();
                 let a = std::thread::spawn(move || {
@@ -443,7 +436,7 @@ pub fn loop_logic(args:String,state:Arc<screen_state>) -> Result<(),  Error> {
                     };
                 }
                 });
-                loopRecorder(recorder,screenshot_frames_clone, state_clone);  
+                loop_recorder(recorder,screenshot_frames_clone, state_clone);  
 
                 a.join().unwrap();  
             
@@ -512,7 +505,7 @@ fn convert_rgba_to_rgb(
     rgb_img
 }
 
-fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<screen_state>)->JoinHandle<()> {
+fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec<u8>>>>, to_redraw_clone: Arc<Mutex<bool>>,state:Arc<ScreenState>)->JoinHandle<()> {
     thread::spawn(move || {
         let now: DateTime<Local> = Local::now();
 
@@ -533,7 +526,7 @@ fn spawn_screenshot_thread(screenshot_clone: Arc<Mutex<ImageBuffer<Rgba<u8>, Vec
                 StreamingState::START =>{
                     if error_m && state.get_reconnect(){
                         println!("Reconnection");
-                        let client = Client::new(state.get_ip_send().clone(), state.get_ip_send().clone());
+                        let client = Client::new(state.get_ip_send().clone());
                         if let Ok(stream) = client.connect_to_ip() {
                             println!("riconnection done");
                             state.set_client(Some((stream, client)));

@@ -11,7 +11,7 @@ pub mod net {
 
     use io::{Error, ErrorKind};
 
-    use crate::{enums::StreamingState, screen::screen::screen_state};
+    use crate::{enums::StreamingState, screen::screen::ScreenState};
 
     use super::*;
 
@@ -50,7 +50,7 @@ pub mod net {
             }
         }
     
-        pub fn bind_to_ip(&self, state: Arc<screen_state>) -> io::Result<()> {
+        pub fn bind_to_ip(&self, state: Arc<ScreenState>) -> io::Result<()> {
             let listener = TcpListener::bind(&self.ipaddress)?;
 
             let clients = self.clients.clone();
@@ -87,10 +87,12 @@ pub mod net {
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
                                         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                            
                                             // No data available right now, yield to other threads
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
-                                        Err(_) => {
+                                        Err(ref e) => {
+                                            println!("{:?}",e);
                                             // An error occurred, assume the client has disconnected
                                             println!("Client disconnected: {}", client_address);
                                             clients_clone.lock().unwrap().remove(&client_address);
@@ -101,7 +103,7 @@ pub mod net {
                                 }
                             });
                         },
-                        Err(e) => {
+                        Err(_) => {
                             // println!("Connection failed: {}", e);
                         },
                     }
@@ -122,7 +124,7 @@ pub mod net {
                 for chunk in serialized_data.as_ref().unwrap().chunks(CHUNK_SIZE) {
                    
                     match stream.write_all(chunk) {
-                        Ok(T) =>{},
+                        Ok(_) =>{},
                         Err(e) =>  {
                             println!("{:?}",e);
                             is_valid = false;
@@ -154,14 +156,12 @@ pub mod net {
     }
 
     pub struct Client {
-        ipaddress: String,
         server_address: String,
     }
 
     impl Client {
-        pub fn new(ipaddress: String, server_address: String) -> Self {
+        pub fn new(server_address: String) -> Self {
             Client {
-                ipaddress,
                 server_address,
             }
         }
@@ -181,7 +181,7 @@ pub mod net {
             stream.peer_addr().is_ok()
         }
 
-        pub fn receive_image_and_struct(&self, stream: &mut TcpStream, state: Arc<screen_state>) -> io::Result<Screenshot> {
+        pub fn receive_image_and_struct(&self, stream: &mut TcpStream, state: Arc<ScreenState>) -> io::Result<Screenshot> {
             const STOP_MESSAGE: &[u8] = b"STOP";
             let mut buffer = vec![0; CHUNK_SIZE];
             let mut data = Vec::new();
@@ -231,7 +231,7 @@ pub mod net {
                     println!("{:?}", screenshot.width);
                     Ok(screenshot)
                 }
-                Err(e) => {
+                Err(_) => {
                     println!("screenshot error");
                     Err(Error::last_os_error())
                 },

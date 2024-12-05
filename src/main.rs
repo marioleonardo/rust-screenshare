@@ -13,7 +13,7 @@ use local_ip_address::local_ip;
 use screen::capture::capture::*;
 use screen::net::net::*;
 use screen::screen::loop_logic;
-use screen::screen::screen_state;
+use screen::screen::ScreenState;
 use std::sync::Arc;
 
 #[derive(PartialEq, Debug, Default)]
@@ -100,7 +100,7 @@ struct MyApp {
     insert_shortcut_stop: bool,
     my_enum: CastRecEnum,
     server_address: String,
-    state: Arc<screen_state>,
+    state: Arc<ScreenState>,
     flag_thread: bool,
     x: String,
     y: String,
@@ -244,7 +244,7 @@ impl MyApp {
     fn start_rec_function(&mut self) {
         self.state.drop_client();
 
-        let client = Client::new(self.server_address.clone(), self.server_address.clone());
+        let client = Client::new(self.server_address.clone());
         if let Ok(stream) = client.connect_to_ip() {
             self.state.set_client(Some((stream, client)));
             self.state.set_ip_send(self.server_address.clone());
@@ -377,7 +377,7 @@ impl eframe::App for MyApp {
                             ui.horizontal(|ui| {
                                 ui.add_space(ui.available_width() / 4.0);
                                 ui.label("Indice monitor:");
-                                let monitor = getMonitors();
+                                let monitor = get_monitors();
                                 egui::ComboBox::from_label("")
                                     .selected_text(format!("{}", self.monitor_number))
                                     .show_ui(ui, |ui| {
