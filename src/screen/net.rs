@@ -54,7 +54,7 @@ pub mod net {
             let listener = TcpListener::bind(&self.ipaddress)?;
 
             let clients = self.clients.clone();
-            listener.set_nonblocking(true)?;
+            //listener.set_nonblocking(true)?;
             thread::spawn(move || {
                 println!("listener created {:?}",listener.local_addr());
                 for stream in listener.incoming() {
@@ -87,7 +87,7 @@ pub mod net {
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
                                         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                            
+
                                             // No data available right now, yield to other threads
                                             thread::sleep(Duration::from_millis(50)); // Sleep for a short time to avoid busy waiting
                                         }
